@@ -41,8 +41,9 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    - -fwrite-ide-info
-    - -hiedir=.hie
+    ## for stan analysis
+    #- -fwrite-ide-info
+    #- -hiedir=.hie
     dependencies:
     - elephantom
 
