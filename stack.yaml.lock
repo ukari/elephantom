@@ -3,7 +3,49 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: VulkanMemoryAllocator-0.3.11@sha256:429b59c2317cfa0c08124e31259c7626ef7d9fd0c6c5035a2205b0aaa5a1eac1,2860
+    pantry-tree:
+      size: 524
+      sha256: f261a7a52c99f73c1e177af08502547cb750d01d76d33da53265a8fb07805cc7
+  original:
+    hackage: VulkanMemoryAllocator-0.3.11@sha256:429b59c2317cfa0c08124e31259c7626ef7d9fd0c6c5035a2205b0aaa5a1eac1,2860
+- completed:
+    hackage: vulkan-3.8@sha256:3bab55f6fb6c87ad1eb89243ecef7d3da3efc2ff943d55e391a8e8d1e1792639,23746
+    pantry-tree:
+      size: 65992
+      sha256: 86cdc38b7f95132d44d84085376667be3590ead0c4431e69ed3a2206cbcdcbc5
+  original:
+    hackage: vulkan-3.8@sha256:3bab55f6fb6c87ad1eb89243ecef7d3da3efc2ff943d55e391a8e8d1e1792639,23746
+- completed:
+    hackage: vulkan-utils-0.4@sha256:d74e582532cede5c42dca376b7892d41340c14046a7da216c9c3d1fea879b722,3087
+    pantry-tree:
+      size: 1374
+      sha256: 86ac4f82da6e7e451cf3506cfe530233513a4a9d15abb7eb787bdbad8f5b20d3
+  original:
+    hackage: vulkan-utils-0.4@sha256:d74e582532cede5c42dca376b7892d41340c14046a7da216c9c3d1fea879b722,3087
+- completed:
+    hackage: dependent-map-0.4.0.0@sha256:ca2b131046f4340a1c35d138c5a003fe4a5be96b14efc26291ed35fd08c62221,1657
+    pantry-tree:
+      size: 551
+      sha256: 5defa30010904d2ad05a036f3eaf83793506717c93cbeb599f40db1a3632cfc5
+  original:
+    hackage: dependent-map-0.4.0.0@sha256:ca2b131046f4340a1c35d138c5a003fe4a5be96b14efc26291ed35fd08c62221,1657
+- completed:
+    hackage: dependent-sum-0.7.1.0@sha256:5599aa89637db434431b1dd3fa7c34bc3d565ee44f0519bfbc877be1927c2531,2068
+    pantry-tree:
+      size: 290
+      sha256: 9cbfb32b5a8a782b7a1c941803fd517633cb699159b851c1d82267a9e9391b50
+  original:
+    hackage: dependent-sum-0.7.1.0@sha256:5599aa89637db434431b1dd3fa7c34bc3d565ee44f0519bfbc877be1927c2531,2068
+- completed:
+    hackage: constraints-extras-0.3.0.2@sha256:013b8d0392582c6ca068e226718a4fe8be8e22321cc0634f6115505bf377ad26,1853
+    pantry-tree:
+      size: 594
+      sha256: 3ce1012bfb02e4d7def9df19ce80b8cd2b472c691b25b181d9960638673fecd1
+  original:
+    hackage: constraints-extras-0.3.0.2@sha256:013b8d0392582c6ca068e226718a4fe8be8e22321cc0634f6115505bf377ad26,1853
 snapshots:
 - completed:
     size: 533252

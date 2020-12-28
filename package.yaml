@@ -21,9 +21,17 @@ description:         Please see the README on GitHub at <https://github.com/ukar
 
 dependencies:
 - base >= 4.7 && < 5
+- Cabal
+- gitrev
+- hspec
 
 library:
   source-dirs: src
+  dependencies:
+  - qm-interpolated-string
+  - vulkan
+  - vulkan-utils
+  - VulkanMemoryAllocator
 
 executables:
   elephantom:
@@ -33,6 +41,8 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -fwrite-ide-info
+    - -hiedir=.hie
     dependencies:
     - elephantom
 
