@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b5d03c1e39ad4857f2e7f4be177e8d3ab9f587b080556fe3a3e267d7e71bb9cf
+-- hash: ea9ee66aee2c7772d0a5db400786800566222bf245f1b1c6dc73d699c7e6bd3d
 
 name:           elephantom
 version:        0.1.0.0
@@ -34,11 +34,19 @@ library
       src
   build-depends:
       Cabal
+    , JuicyPixels
+    , JuicyPixels-repa
     , VulkanMemoryAllocator
     , base >=4.7 && <5
+    , fused-effects
     , gitrev
     , hspec
     , qm-interpolated-string
+    , repa
+    , resourcet
+    , sdl2
+    , streamly
+    , text
     , vulkan
     , vulkan-utils
   default-language: Haskell2010

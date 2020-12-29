@@ -5,6 +5,20 @@
 
 packages:
 - completed:
+    hackage: repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
+    pantry-tree:
+      size: 2965
+      sha256: 9df7e22a32219da108ee67a24a9a223973357ce40d2d920d3df994c46e98f77e
+  original:
+    hackage: repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
+- completed:
+    hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
+    pantry-tree:
+      size: 222
+      sha256: 951d640678453f8e41fa6aac78eed1fea260d71152abfcd1b7e8c2fe936d2581
+  original:
+    hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
+- completed:
     hackage: VulkanMemoryAllocator-0.3.11@sha256:429b59c2317cfa0c08124e31259c7626ef7d9fd0c6c5035a2205b0aaa5a1eac1,2860
     pantry-tree:
       size: 524

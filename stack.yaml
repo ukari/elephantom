@@ -66,6 +66,8 @@ packages:
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
 extra-deps:
+- repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
+- JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
 - VulkanMemoryAllocator-0.3.11@sha256:429b59c2317cfa0c08124e31259c7626ef7d9fd0c6c5035a2205b0aaa5a1eac1,2860
 - vulkan-3.8@sha256:3bab55f6fb6c87ad1eb89243ecef7d3da3efc2ff943d55e391a8e8d1e1792639,23746
 - vulkan-utils-0.4@sha256:d74e582532cede5c42dca376b7892d41340c14046a7da216c9c3d1fea879b722,3087
