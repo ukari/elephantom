@@ -20,7 +20,7 @@ import Vulkan.Utils.ShaderQQ
 import qualified VulkanMemoryAllocator as Vma
 
 import Data.Text (Text (..))
-import qualified Data.ByteString as BS
+import Data.ByteString (packCString)
 import Data.Traversable (traverse)
 
 import Streamly
@@ -36,7 +36,7 @@ someFunc = runResourceT $ do
   withSDL
   window <- withWindow "test" 500 500
   extensionsCString <- SDL.vkGetInstanceExtensions window
-  extensions <- liftIO $ traverse BS.packCString extensionsCString
+  extensions <- liftIO $ traverse packCString extensionsCString
   liftIO $ print extensions
   liftIO $ drain $ asyncly $ constRate 60 $ repeatM $ liftIO $ pure ()
   return undefined
