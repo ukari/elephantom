@@ -1,5 +1,5 @@
 
-
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedLists #-}
@@ -20,6 +20,8 @@ import Vulkan.Utils.ShaderQQ
 import qualified VulkanMemoryAllocator as Vma
 
 import Data.Text (Text (..))
+import qualified Data.ByteString as BS
+import Data.Traversable (traverse)
 
 import Streamly
 import Streamly.Prelude (drain, repeatM)
@@ -32,7 +34,10 @@ someFunc = runResourceT $ do
   --SDL.initialize [SDL.InitVideo]
   --bracket_ (SDL.initialize [SDL.InitVideo]) SDL.quit allocate
   withSDL
-  withWindow "test" 500 500
+  window <- withWindow "test" 500 500
+  extensionsCString <- SDL.vkGetInstanceExtensions window
+  extensions <- liftIO $ traverse BS.packCString extensionsCString
+  liftIO $ print extensions
   liftIO $ drain $ asyncly $ constRate 60 $ repeatM $ liftIO $ pure ()
   return undefined
 
@@ -52,3 +57,6 @@ withWindow title width height = do
     })
     SDL.destroyWindow
   pure window
+
+--withSurface :: SDL.Window -> Managed SurfaceKHR
+--withSurface window = do

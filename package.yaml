@@ -30,6 +30,7 @@ library:
   dependencies:
   - streamly
   - text
+  - bytestring
   - qm-interpolated-string
   - sdl2
   - vulkan
