@@ -1,4 +1,5 @@
 
+
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -16,17 +17,24 @@ import Vulkan hiding (allocate)
 import qualified Vulkan.Core10 as Core10
 import qualified Vulkan.Extensions.VK_KHR_swapchain as Swap
 import Vulkan.Extensions.VK_EXT_acquire_xlib_display
+import Vulkan.Utils.Debug
 import Vulkan.Utils.ShaderQQ
+import Vulkan.Utils.Initialization
+import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
 
+import Foreign.Ptr (Ptr, castPtr)
 import Data.Text (Text (..))
 import Data.ByteString (packCString)
 import Data.Traversable (traverse)
+import Data.Bits ((.&.), (.|.), shift, zeroBits)
 
 import Streamly
 import Streamly.Prelude (drain, repeatM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Resource (ResourceT, runResourceT, allocate, allocate_, release, register)
+import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
+import Control.Error.Util (hoistMaybe)
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
@@ -35,13 +43,18 @@ someFunc = runResourceT $ do
   --bracket_ (SDL.initialize [SDL.InitVideo]) SDL.quit allocate
   withSDL
   window <- withWindow "test" 500 500
-  extensionsCString <- SDL.vkGetInstanceExtensions window
-  extensions <- liftIO $ traverse packCString extensionsCString
-  liftIO $ print extensions
+  inst <- withInst window
+  surface <- withSurface inst window
+  --liftIO $ print inst
   liftIO $ drain $ asyncly $ constRate 60 $ repeatM $ liftIO $ pure ()
   return undefined
 
 type Managed a = forall m . MonadIO m => ResourceT m a
+
+appInfo :: ApplicationInfo
+appInfo = zero { applicationName = Nothing
+               , apiVersion = API_VERSION_1_0
+               }
 
 withSDL :: Managed ()
 withSDL = do
@@ -58,5 +71,15 @@ withWindow title width height = do
     SDL.destroyWindow
   pure window
 
---withSurface :: SDL.Window -> Managed SurfaceKHR
---withSurface window = do
+withInst :: SDL.Window -> Managed Instance
+withInst window = do
+  extensionsCString <- SDL.vkGetInstanceExtensions window
+  extensions <- liftIO $ traverse packCString extensionsCString
+  inst <- createDebugInstanceFromRequirements [ RequireInstanceExtension Nothing ext minBound | ext <- extensions ] [] zero { applicationInfo = Just appInfo }
+  pure inst
+
+withSurface :: Instance -> SDL.Window -> Managed SurfaceKHR
+withSurface inst window = do
+  (_key, surface) <- allocate (SurfaceKHR <$> SDL.vkCreateSurface window (castPtr $ instanceHandle inst))
+    (\s -> destroySurfaceKHR inst s Nothing)
+  pure surface

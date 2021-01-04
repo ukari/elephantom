@@ -40,7 +40,9 @@ library:
   - repa
   - JuicyPixels-repa
   - JuicyPixels
+  - errors
   - fused-effects
+  - transformers
 
 executables:
   elephantom:

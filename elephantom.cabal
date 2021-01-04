@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0bb41e56a648b8a74ddf857d1cb6f86cf00a5fda5163dd42f16d45bbb7512d54
+-- hash: d5a9365aee1d13eb995068f05deed7da07d578dc802b0625ae281ec57c1d3ec3
 
 name:           elephantom
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
     , VulkanMemoryAllocator
     , base >=4.7 && <5
     , bytestring
+    , errors
     , fused-effects
     , gitrev
     , hspec
@@ -48,6 +49,7 @@ library
     , sdl2
     , streamly
     , text
+    , transformers
     , vulkan
     , vulkan-utils
   default-language: Haskell2010
