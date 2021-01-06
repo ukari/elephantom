@@ -29,6 +29,8 @@ library:
   source-dirs: src
   dependencies:
   - streamly
+  - containers
+  - vector
   - text
   - bytestring
   - qm-interpolated-string
@@ -40,6 +42,7 @@ library:
   - repa
   - JuicyPixels-repa
   - JuicyPixels
+  - Rasterific
   - errors
   - fused-effects
   - transformers
