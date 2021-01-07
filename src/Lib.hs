@@ -37,6 +37,7 @@ import Data.Bits ((.&.), (.|.), shift, zeroBits)
 import Data.Vector ((!), (!?))
 import qualified Data.Vector as V
 import Data.Set (union)
+import Data.Maybe (fromMaybe)
 
 import Streamly
 import Streamly.Prelude (drain, repeatM)
@@ -74,19 +75,24 @@ data AppException
 
 instance Exception AppException
 
-class AppMaybe m a where
-  tryWith :: Monad m => a -> Maybe a -> m a
-  tryWithE :: Monad m => AppException -> Maybe a -> m a
 
-instance AppMaybe m a where
-  tryWith :: Monad m => a -> Maybe a -> m a
-  tryWith normal value = runMaybeT (hoistMaybe value) >>= \case
-    Just x -> pure x
-    Nothing -> pure normal
-  tryWithE :: Monad m => AppException -> Maybe a -> m a
-  tryWithE ex value = runExceptT (failWith ex value) >>= \case
+tryWithM :: Monad m => a -> Maybe a -> m a
+tryWithM normal value = runMaybeT (hoistMaybe value) >>= \case
+  Just x -> pure x
+  Nothing -> pure normal
+
+tryWithEM :: Monad m => AppException -> Maybe a -> m a
+tryWithEM ex value = runExceptT (failWith ex value) >>= \case
     Right x -> pure x
     Left e -> throw e
+
+tryWith :: a -> Maybe a -> a
+tryWith = fromMaybe
+
+tryWithE :: AppException -> Maybe a -> a
+tryWithE ex = \case
+  Just x -> x
+  Nothing -> throw ex
 
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing
@@ -136,10 +142,7 @@ findQueueFamilyIndices pdevice surf = do
   queueFamilies <- getPhysicalDeviceQueueFamilyProperties pdevice
   graphicsQueueFamilyIndices <- return $ V.map fst $ V.filter isGraphicsQueue $ V.indexed queueFamilies
   presentQueueFamilyIndices <- V.map fst <$> V.filterM isPresentQueue (V.indexed queueFamilies)
-  graphicsQueueFamilyIndex <- tryWithE VulkanGraphicsFamilyIndexException (graphicsQueueFamilyIndices !? 0) 
-  -- graphicsQueueFamilyIndex <- (return $ graphicsQueueFamilyIndices !? 0) >>= \case
-  --    Just e -> return e
-  --    Nothing -> throw $ VulkanGraphicsFamilyIndexException
+  graphicsQueueFamilyIndex <- tryWithEM VulkanGraphicsFamilyIndexException (graphicsQueueFamilyIndices !? 0)
   presentQueueFamilyIndex <- return $ pickPresentFamilyIndex graphicsQueueFamilyIndex presentQueueFamilyIndices
   return $ QueueFamilyIndices (fromIntegral graphicsQueueFamilyIndex) (fromIntegral presentQueueFamilyIndex)
   where
@@ -147,22 +150,17 @@ findQueueFamilyIndices pdevice surf = do
     isGraphicsQueue (_i, q) = QUEUE_GRAPHICS_BIT .&. (queueFlags q) /= zeroBits && (queueCount q > 0)
     isPresentQueue :: MonadIO m => (Int, QueueFamilyProperties) -> m Bool
     isPresentQueue (i, _q) = getPhysicalDeviceSurfaceSupportKHR pdevice (fromIntegral i) surf
+    -- prefer to pick present queue which is different from graphics queue
     pickPresentFamilyIndex :: "graphicsQueueFamilyIndex" ::: Int -> V.Vector Int -> Int
-    pickPresentFamilyIndex gi pis | gi `notElem` pis = case pis !? 0 of
-                                      Just e -> e
-                                      Nothing -> throw $ VulkanPresentFamilyIndexException
-                                  | otherwise = case V.findIndex (/= gi) pis of
-                                      Just e -> e
-                                      Nothing -> gi
+    pickPresentFamilyIndex gi pis | gi `notElem` pis = tryWithE VulkanPresentFamilyIndexException (pis !? 0)
+                                  | otherwise = tryWith gi (V.findIndex (/= gi) pis)
 
 findMemoryType :: MonadIO m => PhysicalDevice -> "memoryTypeBits" ::: Word -> MemoryPropertyFlagBits -> m Word
 findMemoryType pdevice typeFilter flagBits = do
   memProps <- getPhysicalDeviceMemoryProperties pdevice
   count <- return $ memoryTypeCount memProps
   memTypes <- return $ memoryTypes memProps
-  (return $ V.findIndex matchp (V.indexed $ V.take (fromIntegral count) memTypes)) >>= \case
-    Just idx -> return $ fromIntegral idx
-    Nothing -> throw $ VulkanAllocateMemoryException "can't allocate video memory"
+  return . fromIntegral $ tryWithE (VulkanAllocateMemoryException "can't allocate video memory") (V.findIndex matchp (V.indexed $ V.take (fromIntegral count) memTypes))
   where
     matchp :: (Int, MemoryType) -> Bool
     matchp (i, e) = typeFilter .&. (1 `shift` (fromIntegral i)) /= zeroBits && (propertyFlags e) .&. flagBits == flagBits
