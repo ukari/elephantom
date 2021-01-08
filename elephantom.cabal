@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: de8776c544500e49d3a039ba74de5301632012671f3c2662a5d9d2c6057c99de
+-- hash: 78aeb1c4096b6147294cd4208a436f32c59f99d5cec321922cae9a82ff04cbbe
 
 name:           elephantom
 version:        0.1.0.0
@@ -53,6 +53,7 @@ library
     , text
     , transformers
     , vector
+    , vector-algorithms
     , vulkan
     , vulkan-utils
   default-language: Haskell2010
