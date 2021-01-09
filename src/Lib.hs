@@ -45,13 +45,49 @@ import Data.Vector.Algorithms.Intro as V
 import Data.Maybe (fromMaybe)
 
 import Streamly
-import Streamly.Prelude (drain, repeatM)
+import Streamly.Prelude (drain, yield, repeatM)
+import qualified Streamly.Prelude as S
+import Control.Monad.Cont
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Resource (ResourceT, runResourceT, allocate, allocate_, release, register)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw)
+
+-- ActorT
+-- runActorT
+
+--type Actor a = forall m . MonadIO m => Maybe a -> m (Maybe a)
+
+actor :: (Monad m, Show a, Num a, Ord a) => Maybe a -> m (Maybe a)
+actor = \case
+  Just x -> do
+    --liftIO $ print x
+    if x < 10
+      then pure $ Just (x + 1)
+      else pure $ Just x -- Nothing
+  Nothing -> pure $ Just 0
+
+data State a
+  = Init
+  | State a
+  | Over
+-- liftIO $ S.drainWhile (/=Over) $ S.drop 1 $ asyncly $ constRate 5 $ S.iterateM actor (pure $Just 2)
+-- hide <== -- S.drainWhile (/=Over) $ S.drop 1 --
+-- spawn actor Init <== -- S.iterateM actor (pure $ Just 2) --
+-- Monad m => state -> m newState
+data Actor = Actor
+  {
+  }
+
+-- class IsActor a where
+--   spawn :: (IsStream t, Monad m) => a Actor -> State a -> t m a
+stop :: MonadCont m => ((a -> m b) -> m a) -> m a
+stop = callCC
+
+actor2 :: Maybe a -> ContT r m (Maybe a)
+actor2 = return undefined
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
@@ -67,9 +103,11 @@ someFunc = runResourceT $ do
   liftIO $ print indices
   let queueIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
   device <- getDevice phys queueIndices
-  swapchain <- withSwapchain phys surf device queueIndices
+  swapchain <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
   images <- pure . snd =<< getSwapchainImagesKHR device swapchain
-  liftIO $ drain $ asyncly $ constRate 60 $ repeatM $ liftIO $ pure ()
+  --liftIO $ drain $ asyncly $ constRate 60 $ repeatM $ liftIO $ pure ()
+  let fps = 60
+  liftIO $ S.drainWhile (/=Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $Just 2)
   return undefined
 
 type Managed a = forall m . MonadIO m => ResourceT m a
@@ -184,8 +222,15 @@ getDevice phys indices = do
         }
   pure . snd =<< withDevice phys deviceCreateInfo Nothing allocate
 
-withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Managed SwapchainKHR
-withSwapchain phys surf device indices = do
+data SwapchainResource = SwapchainResource
+  { swapchain :: SwapchainKHR
+  , images :: V.Vector Image
+  , imageViews :: V.Vector ImageView
+  , framebuffers :: V.Vector Framebuffer
+  }
+
+withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> Managed SwapchainKHR
+withSwapchain phys surf device indices imageExtent = do
   (_, formats) <- getPhysicalDeviceSurfaceFormatsKHR phys surf
   let surfaceFormat = formats!0
   liftIO $ print formats
@@ -202,7 +247,7 @@ withSwapchain phys surf device indices = do
         , minImageCount = minImageCount (surfaceCaps :: SurfaceCapabilitiesKHR) + 1
         , imageFormat = format (surfaceFormat :: SurfaceFormatKHR)
         , imageColorSpace = colorSpace surfaceFormat
-        , imageExtent = Extent2D 1920 1080
+        , imageExtent = imageExtent
         , imageArrayLayers = 1
         , imageUsage = IMAGE_USAGE_COLOR_ATTACHMENT_BIT
         , imageSharingMode = sharingMode
