@@ -28,7 +28,6 @@ dependencies:
 library:
   source-dirs: src
   dependencies:
-  - mtl
   - streamly
   - containers
   - vector

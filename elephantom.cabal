@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cea87b3167d63430c82744b9696df63ff57078c01643357dbef1509020a2081e
+-- hash: 78aeb1c4096b6147294cd4208a436f32c59f99d5cec321922cae9a82ff04cbbe
 
 name:           elephantom
 version:        0.1.0.0
@@ -45,7 +45,6 @@ library
     , fused-effects
     , gitrev
     , hspec
-    , mtl
     , qm-interpolated-string
     , repa
     , resourcet

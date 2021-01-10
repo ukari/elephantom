@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE FlexibleInstances #-}
 
@@ -47,18 +48,14 @@ import Data.Maybe (fromMaybe)
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
 import qualified Streamly.Prelude as S
-import Control.Monad.Cont
+import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+-- import Control.Monad.IO.Class
 import Control.Monad.Trans.Resource (ResourceT, runResourceT, allocate, allocate_, release, register)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw)
-
--- ActorT
--- runActorT
-
---type Actor a = forall m . MonadIO m => Maybe a -> m (Maybe a)
 
 actor :: (Monad m, Show a, Num a, Ord a) => Maybe a -> m (Maybe a)
 actor = \case
@@ -68,26 +65,6 @@ actor = \case
       then pure $ Just (x + 1)
       else pure $ Just x -- Nothing
   Nothing -> pure $ Just 0
-
-data State a
-  = Init
-  | State a
-  | Over
--- liftIO $ S.drainWhile (/=Over) $ S.drop 1 $ asyncly $ constRate 5 $ S.iterateM actor (pure $Just 2)
--- hide <== -- S.drainWhile (/=Over) $ S.drop 1 --
--- spawn actor Init <== -- S.iterateM actor (pure $ Just 2) --
--- Monad m => state -> m newState
-data Actor = Actor
-  {
-  }
-
--- class IsActor a where
---   spawn :: (IsStream t, Monad m) => a Actor -> State a -> t m a
-stop :: MonadCont m => ((a -> m b) -> m a) -> m a
-stop = callCC
-
-actor2 :: Maybe a -> ContT r m (Maybe a)
-actor2 = return undefined
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
@@ -105,7 +82,6 @@ someFunc = runResourceT $ do
   device <- getDevice phys queueIndices
   swapchain <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
   images <- pure . snd =<< getSwapchainImagesKHR device swapchain
-  --liftIO $ drain $ asyncly $ constRate 60 $ repeatM $ liftIO $ pure ()
   let fps = 60
   liftIO $ S.drainWhile (/=Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $Just 2)
   return undefined
