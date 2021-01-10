@@ -32,7 +32,7 @@ import Vulkan.Utils.ShaderQQ
 import Vulkan.Utils.Initialization
 --import Vulkan.Utils.QueueAssignment
 import Vulkan.Requirement
-import qualified VulkanMemoryAllocator as Vma
+--import qualified VulkanMemoryAllocator as Vma
 
 import Foreign.Ptr (Ptr, castPtr)
 import Data.Word (Word32)
@@ -282,6 +282,7 @@ findMemoryType pdevice typeFilter flagBits = do
 data ShaderStageInfo = ShaderStageInfo
   { shaderStages :: V.Vector (SomeStruct PipelineShaderStageCreateInfo)
   , descriptorSetLayouts :: V.Vector DescriptorSetLayout
+  , vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
   }
 
 withShaderStages :: Device -> Managed ShaderStageInfo
@@ -299,7 +300,7 @@ withShaderStages device = do
   layout(location = 0) in vec2 inPosition;
   layout(location = 1) in vec3 inColor;
 
-  layout(location = 3) out vec3 fragColor;
+  layout(location = 0) out vec3 fragColor;
 
   void main() {
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
@@ -345,6 +346,31 @@ withShaderStages device = do
               } ]
           } ]
   descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
+  -- https://vulkan-tutorial.com/Vertex_buffers/Vertex_input_description
+  let vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
+      vertexInputState = Just $ SomeStruct $ zero
+        { vertexBindingDescriptions =
+          [ zero
+            { binding = 0
+            , stride = 20 -- sizeof inPosition + inColor
+            , inputRate = VERTEX_INPUT_RATE_VERTEX
+            }
+          ]
+        , vertexAttributeDescriptions =
+          [ zero
+            { binding = 0
+            , location = 0
+            , offset = 0 -- offsetof (Struct{inPosition, inColor}, inPosition)
+            , format = FORMAT_R32G32_SFLOAT
+            }
+          , zero
+            { binding = 0
+            , location = 1
+            , offset = 8 -- offsetof (Struct{inPosition, inColor}, inColor)
+            , format = FORMAT_R32G32B32_SFLOAT
+            }
+          ]
+        }
   pure ShaderStageInfo {..}
 
 withDescriptorSetLayout :: Device -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetLayout
@@ -395,7 +421,7 @@ withPipeline device renderPass ShaderStageInfo {..} = do
   (_, (_result, pipelines)) <- withGraphicsPipelines device zero
     [ SomeStruct $ zero
       { stages = shaderStages
-      , vertexInputState = Just zero
+      , vertexInputState = vertexInputState
       , inputAssemblyState = Just zero
         { topology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
         , primitiveRestartEnable = False
