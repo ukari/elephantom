@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -80,12 +82,12 @@ someFunc = runResourceT $ do
   indices <- findQueueFamilyIndices phys surf
   liftIO $ print indices
   let queueIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
-  device <- getDevice phys queueIndices
-  swapchain <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
-  images <- pure . snd =<< getSwapchainImagesKHR device swapchain
-  
+  device <- Lib.withDevice phys queueIndices
+  SwapchainInfo {..} <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
+  shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
+  pipeline <- Lib.withPipeline device renderPass shaderStageInfo
   let fps = 60
-  liftIO $ S.drainWhile (/=Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $Just 2)
+  liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $ Just 2)
   return undefined
 
 type Managed a = forall m . MonadIO m => ResourceT m a
@@ -184,8 +186,8 @@ findQueueFamilyIndices pdevice surf = do
     pickPresentFamilyIndex gi pis | gi `notElem` pis = tryWithE VulkanPresentFamilyIndexException (pis !? 0)
                                   | otherwise = tryWith gi (V.findIndex (/= gi) pis)
 
-getDevice :: PhysicalDevice -> "queueFamilyIndices" ::: V.Vector Word32 -> Managed Device
-getDevice phys indices = do
+withDevice :: PhysicalDevice -> "queueFamilyIndices" ::: V.Vector Word32 -> Managed Device
+withDevice phys indices = do
   let deviceCreateInfo :: DeviceCreateInfo '[]
       deviceCreateInfo = zero
         { queueCreateInfos = V.fromList
@@ -198,17 +200,20 @@ getDevice phys indices = do
         , enabledLayerNames = []
         , enabledExtensionNames = [ KHR_SWAPCHAIN_EXTENSION_NAME ]
         }
-  pure . snd =<< withDevice phys deviceCreateInfo Nothing allocate
+  pure . snd =<< Vulkan.withDevice phys deviceCreateInfo Nothing allocate
 
-data SwapchainResource = SwapchainResource
+data SwapchainInfo = SwapchainInfo
   { swapchain :: SwapchainKHR
+  , surfaceFormat :: SurfaceFormatKHR
+  , extent :: Extent2D
   , images :: V.Vector Image
   , imageViews :: V.Vector ImageView
   , framebuffers :: V.Vector Framebuffer
+  , renderPass :: RenderPass
   }
 
-withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> Managed SwapchainKHR
-withSwapchain phys surf device indices imageExtent = do
+withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> Managed SwapchainInfo
+withSwapchain phys surf device indices extent = do
   (_, formats) <- getPhysicalDeviceSurfaceFormatsKHR phys surf
   let surfaceFormat = formats!0
   liftIO $ print formats
@@ -225,7 +230,7 @@ withSwapchain phys surf device indices imageExtent = do
         , minImageCount = minImageCount (surfaceCaps :: SurfaceCapabilitiesKHR) + 1
         , imageFormat = format (surfaceFormat :: SurfaceFormatKHR)
         , imageColorSpace = colorSpace surfaceFormat
-        , imageExtent = imageExtent
+        , imageExtent = extent
         , imageArrayLayers = 1
         , imageUsage = IMAGE_USAGE_COLOR_ATTACHMENT_BIT
         , imageSharingMode = sharingMode
@@ -236,7 +241,33 @@ withSwapchain phys surf device indices imageExtent = do
         , clipped = True
         , oldSwapchain = NULL_HANDLE
         }
-  pure . snd =<< withSwapchainKHR device swapchainCreateInfo Nothing allocate
+  swapchain <- snd <$> withSwapchainKHR device swapchainCreateInfo Nothing allocate
+  images <- snd <$> getSwapchainImagesKHR device swapchain
+  imageViews <- mapM (Lib.withImageView device surfaceFormat) images
+  renderPass <- Lib.withRenderPass device surfaceFormat
+  framebuffers <- mapM (Lib.withFramebuffer device extent renderPass) imageViews
+  pure SwapchainInfo {..}
+
+withImageView :: Device -> SurfaceFormatKHR -> Image -> Managed ImageView
+withImageView device surfaceFormat img =
+   pure . snd =<< Vulkan.withImageView device zero
+     { image = img
+     , viewType = IMAGE_VIEW_TYPE_2D
+     , format = format (surfaceFormat :: SurfaceFormatKHR)
+     , components = zero
+       { r = COMPONENT_SWIZZLE_IDENTITY
+       , g = COMPONENT_SWIZZLE_IDENTITY
+       , b = COMPONENT_SWIZZLE_IDENTITY
+       , a = COMPONENT_SWIZZLE_IDENTITY
+       }
+     , subresourceRange = zero
+       { aspectMask = IMAGE_ASPECT_COLOR_BIT
+       , baseMipLevel = 0
+       , levelCount = 1
+       , baseArrayLayer = 0
+       , layerCount = 1
+       }
+     } Nothing allocate
 
 findMemoryType :: MonadIO m => PhysicalDevice -> "memoryTypeBits" ::: Word -> MemoryPropertyFlagBits -> m Word
 findMemoryType pdevice typeFilter flagBits = do
@@ -248,8 +279,13 @@ findMemoryType pdevice typeFilter flagBits = do
     matchp :: (Int, MemoryType) -> Bool
     matchp (i, e) = typeFilter .&. (1 `shift` (fromIntegral i)) /= zeroBits && (propertyFlags e) .&. flagBits == flagBits
 
-createShaders :: Device -> Managed (V.Vector (SomeStruct PipelineShaderStageCreateInfo))
-createShaders device = do
+data ShaderStageInfo = ShaderStageInfo
+  { shaderStages :: V.Vector (SomeStruct PipelineShaderStageCreateInfo)
+  , descriptorSetLayouts :: V.Vector DescriptorSetLayout
+  }
+
+withShaderStages :: Device -> Managed ShaderStageInfo
+withShaderStages device = do
   vertCode <- return [vert|
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
@@ -285,7 +321,7 @@ createShaders device = do
   |]
   (_, vertShaderStage) <- withShaderModule device zero { code = vertCode } Nothing allocate
   (_, fragShaderStage) <- withShaderModule device zero { code = fragCode } Nothing allocate
-  pure
+  shaderStages <- pure
     [ SomeStruct $ zero
       { stage = SHADER_STAGE_VERTEX_BIT
       , module' = vertShaderStage
@@ -297,10 +333,65 @@ createShaders device = do
       , name = "main"
       }
     ]
+  let descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
+      descriptorSetLayoutCreateInfos =
+        [ zero
+          { bindings =
+            [ zero
+              { binding = 0
+              , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+              , descriptorCount = 1
+              , stageFlags = SHADER_STAGE_VERTEX_BIT
+              } ]
+          } ]
+  descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
+  pure ShaderStageInfo {..}
 
-createPipeline :: Device -> RenderPass -> V.Vector (SomeStruct PipelineShaderStageCreateInfo) -> Managed Pipeline
-createPipeline device renderPass shaderStages = do
-  (_, pipelineLayout) <- withPipelineLayout device zero Nothing allocate
+withDescriptorSetLayout :: Device -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetLayout
+withDescriptorSetLayout device descriptorSetLayoutCreateInfo =
+  snd <$> Vulkan.withDescriptorSetLayout device descriptorSetLayoutCreateInfo Nothing allocate
+
+withRenderPass :: Device -> SurfaceFormatKHR -> Managed RenderPass
+withRenderPass device surfFormat = do
+  colorAttachment <- pure (zero
+    { format = format (surfFormat::SurfaceFormatKHR)
+    , samples = SAMPLE_COUNT_1_BIT
+    , loadOp = ATTACHMENT_LOAD_OP_CLEAR
+    , storeOp = ATTACHMENT_STORE_OP_STORE
+    , stencilLoadOp = ATTACHMENT_LOAD_OP_DONT_CARE
+    , stencilStoreOp = ATTACHMENT_STORE_OP_DONT_CARE
+    , initialLayout = IMAGE_LAYOUT_UNDEFINED
+    , finalLayout = IMAGE_LAYOUT_PRESENT_SRC_KHR
+    } :: AttachmentDescription)
+  colorAttachmentRef <- pure (zero
+    { attachment = 0
+    , layout = IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    } :: AttachmentReference)
+  subpass <- pure (zero
+    { pipelineBindPoint = PIPELINE_BIND_POINT_GRAPHICS
+    , colorAttachments = [ colorAttachmentRef ]
+    } :: SubpassDescription)
+  pure . snd =<< Vulkan.withRenderPass device zero
+    { attachments = [ colorAttachment ]
+    , subpasses = [ subpass ]
+    } Nothing allocate
+
+withFramebuffer :: Device -> Extent2D -> RenderPass -> ImageView -> Managed Framebuffer
+withFramebuffer device curExtent renderPass imageView =
+  snd <$> Vulkan.withFramebuffer device zero
+    { renderPass = renderPass
+    , attachments = [ imageView ]
+    , width = width (curExtent::Extent2D)
+    , height = height (curExtent::Extent2D)
+    , layers = 1
+    } Nothing allocate
+
+withPipeline :: Device -> RenderPass -> ShaderStageInfo -> Managed Pipeline
+withPipeline device renderPass ShaderStageInfo {..} = do
+  (_, pipelineLayout) <- withPipelineLayout device zero
+    { setLayouts = descriptorSetLayouts
+    } Nothing allocate
+  liftIO $ print pipelineLayout
   (_, (_result, pipelines)) <- withGraphicsPipelines device zero
     [ SomeStruct $ zero
       { stages = shaderStages
