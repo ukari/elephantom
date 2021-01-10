@@ -9,6 +9,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -82,6 +83,7 @@ someFunc = runResourceT $ do
   device <- getDevice phys queueIndices
   swapchain <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
   images <- pure . snd =<< getSwapchainImagesKHR device swapchain
+  
   let fps = 60
   liftIO $ S.drainWhile (/=Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $Just 2)
   return undefined
@@ -246,3 +248,99 @@ findMemoryType pdevice typeFilter flagBits = do
     matchp :: (Int, MemoryType) -> Bool
     matchp (i, e) = typeFilter .&. (1 `shift` (fromIntegral i)) /= zeroBits && (propertyFlags e) .&. flagBits == flagBits
 
+createShaders :: Device -> Managed (V.Vector (SomeStruct PipelineShaderStageCreateInfo))
+createShaders device = do
+  vertCode <- return [vert|
+  #version 450
+  #extension GL_ARB_separate_shader_objects : enable
+
+  layout(binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+  } ubo;
+
+  layout(location = 0) in vec2 inPosition;
+  layout(location = 1) in vec3 inColor;
+
+  layout(location = 3) out vec3 fragColor;
+
+  void main() {
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
+    fragColor = inColor;
+  }
+  |]
+  fragCode <- return [frag|
+  #version 450
+
+  #extension GL_ARB_separate_shader_objects : enable
+
+  layout(location = 0) in vec3 fragColor;
+
+  layout(location = 0) out vec4 outColor; 
+
+  void main() {
+    outColor = vec4(fragColor, 1.0);
+  }
+  |]
+  (_, vertShaderStage) <- withShaderModule device zero { code = vertCode } Nothing allocate
+  (_, fragShaderStage) <- withShaderModule device zero { code = fragCode } Nothing allocate
+  pure
+    [ SomeStruct $ zero
+      { stage = SHADER_STAGE_VERTEX_BIT
+      , module' = vertShaderStage
+      , name = "main"
+      }
+    , SomeStruct $ zero
+      { stage = SHADER_STAGE_FRAGMENT_BIT
+      , module' = fragShaderStage
+      , name = "main"
+      }
+    ]
+
+createPipeline :: Device -> RenderPass -> V.Vector (SomeStruct PipelineShaderStageCreateInfo) -> Managed Pipeline
+createPipeline device renderPass shaderStages = do
+  (_, pipelineLayout) <- withPipelineLayout device zero Nothing allocate
+  (_, (_result, pipelines)) <- withGraphicsPipelines device zero
+    [ SomeStruct $ zero
+      { stages = shaderStages
+      , vertexInputState = Just zero
+      , inputAssemblyState = Just zero
+        { topology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+        , primitiveRestartEnable = False
+        }
+      , viewportState = Just $ SomeStruct zero { viewportCount = 1, scissorCount = 1 }
+      , rasterizationState = SomeStruct $ zero
+        { depthClampEnable = False
+        , rasterizerDiscardEnable = False
+        , lineWidth = 1
+        , polygonMode = POLYGON_MODE_FILL
+        , cullMode = CULL_MODE_NONE
+        , frontFace = FRONT_FACE_CLOCKWISE
+        , depthBiasEnable = False
+        }
+      , multisampleState = Just $ SomeStruct $ zero
+        { sampleShadingEnable = False
+        , rasterizationSamples = SAMPLE_COUNT_1_BIT
+        , minSampleShading = 1
+        , sampleMask = [ maxBound ]
+        }
+      , depthStencilState = Nothing
+      , colorBlendState = Just $ SomeStruct $ zero
+        { logicOpEnable = False
+        , attachments =
+          [ zero
+            { colorWriteMask = COLOR_COMPONENT_R_BIT .|. COLOR_COMPONENT_G_BIT .|. COLOR_COMPONENT_B_BIT .|. COLOR_COMPONENT_A_BIT
+            , blendEnable = False
+            } ] }
+      , dynamicState = Just $ zero
+        { dynamicStates =
+          [ DYNAMIC_STATE_VIEWPORT
+          , DYNAMIC_STATE_SCISSOR ] }
+      , layout = pipelineLayout
+      , renderPass = renderPass
+      , subpass = 0
+      , basePipelineHandle = zero
+      } ] Nothing allocate
+  pipeline <- return $ pipelines ! 0
+  return pipeline
