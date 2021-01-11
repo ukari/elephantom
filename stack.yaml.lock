@@ -60,6 +60,20 @@ packages:
       sha256: 3ce1012bfb02e4d7def9df19ce80b8cd2b472c691b25b181d9960638673fecd1
   original:
     hackage: constraints-extras-0.3.0.2@sha256:013b8d0392582c6ca068e226718a4fe8be8e22321cc0634f6115505bf377ad26,1853
+- completed:
+    hackage: derive-storable-plugin-0.2.3.3@sha256:5e6fda22fc834d717c40b31b8a5110d0644176c4bf92f8f62481f50067531719,2787
+    pantry-tree:
+      size: 1408
+      sha256: 1bb72b68bf4a590acbbb27523125a4f543e4b094ae8f6d930147ef683d2173d2
+  original:
+    hackage: derive-storable-plugin-0.2.3.3@sha256:5e6fda22fc834d717c40b31b8a5110d0644176c4bf92f8f62481f50067531719,2787
+- completed:
+    hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
+    pantry-tree:
+      size: 901
+      sha256: daa96c321b4d81aac6c28d621aaf67681017fe4d277b3b713930e7dd8bfeb53e
+  original:
+    hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
 snapshots:
 - completed:
     size: 533252

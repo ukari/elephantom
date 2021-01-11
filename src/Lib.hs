@@ -1,3 +1,10 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -34,13 +41,24 @@ import Vulkan.Utils.Initialization
 import Vulkan.Requirement
 --import qualified VulkanMemoryAllocator as Vma
 
+import Language.Haskell.TH hiding (location)
+import Type.Reflection (SomeTypeRep, splitApps, typeOf)
+import GHC.Generics ((:*:) (..), Generic (..), M1 (..), K1 (..))
+import Data.Data (Data, Typeable, constrFields, toConstr, dataTypeConstrs, dataTypeOf, maxConstrIndex, indexConstr)
+import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
+import Foreign.Storable.Generic.Internal (GStorable', internalOffsets)
 import Foreign.Ptr (Ptr, castPtr)
+import Foreign.Storable (Storable (sizeOf, alignment))
+import qualified Foreign.Storable as Storable
+import Linear (V2 (..), V3 (..))
+import qualified Linear as Linear
 import Data.Word (Word32)
 import Data.Text (Text (..))
 import Data.ByteString (packCString)
 import Data.Traversable (traverse)
 import Data.Bits ((.&.), (.|.), shift, zeroBits)
 import Data.Vector ((!), (!?), uniq, modify)
+import qualified Data.Vector.Storable as Storable
 import qualified Data.Vector as V
 import Data.Vector.Algorithms.Intro (sort)
 import Data.Vector.Algorithms.Intro as V
@@ -59,6 +77,17 @@ import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw)
+
+import Tmp
+
+
+-- bar :: a -> a
+bar :: Int
+bar = $(foo) 1
+
+--firstbar = to $ M1 {unM1 = K1 {unK1 = V2 0.0 0.0}}
+--foo = to$ M1 {unM1 = M1 {unM1 = M1 {unM1 = K1 {unK1 = V2 0.0 0.0}} :*: M1 {unM1 = K1 {unK1 = V3 0.0 0.0 0.0}}}}
+--to $M1 {unM1 = K1 {unK1 = V2 0.0 0.0}}
 
 actor :: (Monad m, Show a, Num a, Ord a) => Maybe a -> m (Maybe a)
 actor = \case
@@ -101,7 +130,6 @@ data AppException
   deriving (Show)
 
 instance Exception AppException
-
 
 tryWithM :: Monad m => a -> Maybe a -> m a
 tryWithM normal value = runMaybeT (hoistMaybe value) >>= \case
@@ -284,6 +312,11 @@ data ShaderStageInfo = ShaderStageInfo
   , descriptorSetLayouts :: V.Vector DescriptorSetLayout
   , vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
   }
+
+data Vertex = Vertex
+  { inPosition :: (V2 Float)
+  , inColor :: (V3 Float)
+  } deriving (Generic, GStorable, Data, Typeable)
 
 withShaderStages :: Device -> Managed ShaderStageInfo
 withShaderStages device = do

@@ -28,8 +28,10 @@ dependencies:
 library:
   source-dirs: src
   dependencies:
+  - template-haskell
   - streamly
   - containers
+  - linear
   - vector
   - vector-algorithms
   - text
@@ -47,6 +49,7 @@ library:
   - errors
   - fused-effects
   - transformers
+  - derive-storable
 
 executables:
   elephantom:
@@ -59,8 +62,11 @@ executables:
     ## for stan analysis
     #- -fwrite-ide-info
     #- -hiedir=.hie
+    - -fplugin=Foreign.Storable.Generic.Plugin
+    - -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1
     dependencies:
     - elephantom
+    - derive-storable-plugin
 
 tests:
   elephantom-test:

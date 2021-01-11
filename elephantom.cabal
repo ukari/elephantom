@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 78aeb1c4096b6147294cd4208a436f32c59f99d5cec321922cae9a82ff04cbbe
+-- hash: 04e8950ce1cf88fce3e1b6fbb1a1457b8bfcbaffbfffd3bc01a54a729e292240
 
 name:           elephantom
 version:        0.1.0.0
@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:
       Lib
+      Tmp
   other-modules:
       Paths_elephantom
   hs-source-dirs:
@@ -41,15 +42,18 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
+    , derive-storable
     , errors
     , fused-effects
     , gitrev
     , hspec
+    , linear
     , qm-interpolated-string
     , repa
     , resourcet
     , sdl2
     , streamly
+    , template-haskell
     , text
     , transformers
     , vector
@@ -64,10 +68,11 @@ executable elephantom
       Paths_elephantom
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Foreign.Storable.Generic.Plugin -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1
   build-depends:
       Cabal
     , base >=4.7 && <5
+    , derive-storable-plugin
     , elephantom
     , gitrev
     , hspec
