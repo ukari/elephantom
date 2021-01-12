@@ -81,10 +81,30 @@ import Control.Exception (Exception (..), throw)
 import Tmp
 
 
+data Foo = FooA
+  { x :: Int
+  , y :: Int
+  } | FooB
+  { z :: Int
+  } deriving (Generic, GStorable)
+
+
 -- bar :: a -> a
 bar :: Int
 bar = $(foo) 1
 
+baz = $(foo3) . inPosition
+
+buz :: Data a => a -> [String]
+buz = constrFields . toConstr
+
+-- fok = $(test) "a"
+--bez :: Int
+--fok = $(test4)
+
+bez = $(offsetOf @ShaderInputVertex (undefined::ShaderInputVertex)  "inColor")
+--boz = $(offsetOf (undefined::Bar))
+-- map constrFieldsmap constrFields . dataTypeConstrs . dataTypeOf
 --firstbar = to $ M1 {unM1 = K1 {unK1 = V2 0.0 0.0}}
 --foo = to$ M1 {unM1 = M1 {unM1 = M1 {unM1 = K1 {unK1 = V2 0.0 0.0}} :*: M1 {unM1 = K1 {unK1 = V3 0.0 0.0 0.0}}}}
 --to $M1 {unM1 = K1 {unK1 = V2 0.0 0.0}}
@@ -313,11 +333,6 @@ data ShaderStageInfo = ShaderStageInfo
   , vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
   }
 
-data Vertex = Vertex
-  { inPosition :: (V2 Float)
-  , inColor :: (V3 Float)
-  } deriving (Generic, GStorable, Data, Typeable)
-
 withShaderStages :: Device -> Managed ShaderStageInfo
 withShaderStages device = do
   vertCode <- return [vert|
@@ -393,7 +408,8 @@ withShaderStages device = do
           [ zero
             { binding = 0
             , location = 0
-            , offset = 0 -- offsetof (Struct{inPosition, inColor}, inPosition)
+            , offset = 0 -- $(offsetOf (undefined::ShaderInputVertex) "inPosition")
+            -- offsetof (Struct{inPosition, inColor}, inPosition)
             , format = FORMAT_R32G32_SFLOAT
             }
           , zero

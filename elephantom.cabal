@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 04e8950ce1cf88fce3e1b6fbb1a1457b8bfcbaffbfffd3bc01a54a729e292240
+-- hash: 47090ef9e6ec82f31c672c4eabf9fd14dc40d3f9d8c0eb2c6afbe5e43f082e2d
 
 name:           elephantom
 version:        0.1.0.0
@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:
       Lib
+      Shader
       Tmp
   other-modules:
       Paths_elephantom
