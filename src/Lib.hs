@@ -79,35 +79,12 @@ import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw)
 
 import Tmp
+import Shader
+import Offset
 
 
-data Foo = FooA
-  { x :: Int
-  , y :: Int
-  } | FooB
-  { z :: Int
-  } deriving (Generic, GStorable)
-
-
--- bar :: a -> a
-bar :: Int
-bar = $(foo) 1
-
-baz = $(foo3) . inPosition
-
-buz :: Data a => a -> [String]
-buz = constrFields . toConstr
-
--- fok = $(test) "a"
---bez :: Int
---fok = $(test4)
-
-bez = $(offsetOf @ShaderInputVertex (undefined::ShaderInputVertex)  "inColor")
---boz = $(offsetOf (undefined::Bar))
--- map constrFieldsmap constrFields . dataTypeConstrs . dataTypeOf
---firstbar = to $ M1 {unM1 = K1 {unK1 = V2 0.0 0.0}}
---foo = to$ M1 {unM1 = M1 {unM1 = M1 {unM1 = K1 {unK1 = V2 0.0 0.0}} :*: M1 {unM1 = K1 {unK1 = V3 0.0 0.0 0.0}}}}
---to $M1 {unM1 = K1 {unK1 = V2 0.0 0.0}}
+foo = $(offsetOf @ShaderInputVertex (undefined::ShaderInputVertex)  "inColor")
+bar = $(offsetOf @ShaderInputVertex undefined  "inPosition")
 
 actor :: (Monad m, Show a, Num a, Ord a) => Maybe a -> m (Maybe a)
 actor = \case
