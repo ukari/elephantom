@@ -1,22 +1,25 @@
-
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
+--{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Offset
   ( module Offset
   ) where
 
-
+import Language.Haskell.TH
 import Foreign.Storable (Storable)
 import Data.Data (Data, Typeable, constrFields, toConstr, dataTypeConstrs, dataTypeOf, maxConstrIndex, indexConstr, typeRepArgs)
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 
 import Tmp
-import Shader
+--import Shader
 
-class (Data a, Storable a) => Offset a where
-  offsetof :: a -> String -> Int
---  offsetof _ = $(offsetOf' (undefined::a))
 
-instance Offset ShaderInputVertex where
-  offsetof _ field = $(offsetOf' (undefined::ShaderInputVertex)) field
+
+class (Storable a) => Offset a where
+  offsetof :: a -> OffsetSelect -> Int
+  --offsetof _ = $(offsetOfN (mkName "a"))
+
+-- instance Offset ShaderInputVertex where
+--   offsetof _ field = $(offsetOf' (undefined::ShaderInputVertex)) field
+
