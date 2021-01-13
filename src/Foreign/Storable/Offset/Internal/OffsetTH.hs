@@ -1,39 +1,23 @@
-{-# LANGUAGE DeriveLift #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE LambdaCase #-}
 
-
-module Tmp
-  ( module Tmp
-  ) where
+module Foreign.Storable.Offset.Internal.OffsetTH
+  ( offsetOf
+  )
+  where
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
-import Type.Reflection (SomeTypeRep, splitApps)
-
 import Foreign.Storable (Storable (sizeOf))
-import Data.Data (Data, Typeable, constrFields, toConstr, dataTypeConstrs, dataTypeOf, maxConstrIndex, indexConstr, typeRepArgs, dataTypeName, typeOf, typeRepFingerprint)
-import Data.List (elemIndex)
 import Data.Either (lefts, rights)
-import Linear (V2 (..), V3 (..))
-import GHC.Generics (Generic)
-import Foreign.Storable.Generic (GStorable)
+import Data.List (elemIndex)
 
-data OffsetSelect
-  = Record String
-  | Normal Int
-  deriving (Show)
+import Foreign.Storable.Offset.OffsetSelect (OffsetSelect (..))
 
-
-offsetOfN :: Name -> Q Exp
-offsetOfN name = do
+offsetOf :: Name -> Q Exp
+offsetOf name = do
   TyConI (DataD _ fullName _ _ cons _)<- reify name
   let fieldConTss = map fConT cons 
       isSumtype = length fieldConTss > 1
@@ -77,14 +61,3 @@ offsetOfN name = do
     fromInt = varE 'fromIntegral
     trans :: Q Exp -> Q Exp
     trans = infixApp (infixApp fromInt dot sizeof) app
-
-data Bar = Bar Int Int deriving (Generic, GStorable, Data)
-
-data Foo = FooA
-  { x :: Int
-  , y :: Int
-  } | FooB
-  { z :: Int
-  } | FooC Int
-  deriving (Generic, GStorable)
-

@@ -78,7 +78,6 @@ import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw)
 
-import Tmp
 import Shader
 import Offset
 

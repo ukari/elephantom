@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 05c0a332bccd5903a4d59d333f4a1b4ac73ba536e943d08a8ecf0038ef95450b
+-- hash: 5961670147b548d55e0dfaabb63cbb355160a783a8b6d3874df4dd7298884289
 
 name:           elephantom
 version:        0.1.0.0
@@ -27,10 +27,12 @@ source-repository head
 
 library
   exposed-modules:
+      Foreign.Storable.Offset
+      Foreign.Storable.Offset.Internal.OffsetTH
+      Foreign.Storable.Offset.OffsetSelect
       Lib
       Offset
       Shader
-      Tmp
   other-modules:
       Paths_elephantom
   hs-source-dirs:
