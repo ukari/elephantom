@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveAnyClass #-}
@@ -5,13 +6,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 
+
 module Shader
   ( module Shader
   )
   where
 
 import Language.Haskell.TH
-
 import Linear (V2 (..), V3 (..))
 import GHC.Generics ((:*:) (..), Generic (..), M1 (..), K1 (..))
 import Data.Data (Data, Typeable, constrFields, toConstr, dataTypeConstrs, dataTypeOf, maxConstrIndex, indexConstr, typeRepArgs)
@@ -26,31 +27,28 @@ data ShaderInputVertex = ShaderInputVertex
   , inColor :: !(V3 Float)
   } deriving (Generic, GStorable, Data)
 
+pure []
+
+-- fuz = ''ShaderInputVertex
+-- fuz1 = 'ShaderInputVertex
+
+
+-- https://downloads.haskell.org/~ghc/7.0.2/docs/html/users_guide/template-haskell.html
+-- > A name can be quoted with either one or two prefix single quotes:
+-- >   'f has type Name, and names the function f. Similarly 'C has type Name and names the data constructor C. In general 'thing interprets thing in an expression context.
+-- >   ''T has type Name, and names the type constructor T. That is, ''thing interprets thing in a type context.
+-- makeOffset 'ShaderInputVertex
+
+-- pure []
 -- instance Offset ShaderInputVertex where
---   offsetof _ field = $(offsetOf' (undefined::ShaderInputVertex)) field
+--   offsetof _ = $(offsetOfN ''ShaderInputVertex)
+makeOffset (mkName "ShaderInputVertex")
 
---baz = $(stringE . show =<< reify (mkName "ShaderInputVertex"))
+foo = $(stringE . show =<< makeOffset (mkName "ShaderInputVertex"))
+-- bar = $(stringE . show =<< reify (mkName "Bar"))
 
---data Foo = Foo Int deriving (Show)
-x1 = 100
+-- baz = $(stringE . show =<< reify (mkName "Foo"))
+-- baza = $(offsetOfN (mkName "Bar"))
 
--- introducing a top-level splice, [link](https://gitlab.haskell.org/ghc/ghc/-/issues/9813)
-$( return [] )
-
-foo = $(stringE . show =<< reify (mkName "x1"))
-
-far = [|inPosition|]
-
-instance Offset ShaderInputVertex where
-  --offsetof :: ShaderInputVertex -> OffsetSelect -> Int
-  -- offsetof _ r@(Record _) = $(offsetOfN (mkName "ShaderInputVertex")) r
-  -- offsetof _ i@(Normal _)= $(offsetOfN (mkName "ShaderInputVertex")) i
-  offsetof _ = $(offsetOfN (mkName "ShaderInputVertex"))
-
-bar = $(stringE . show =<< reify (mkName "Bar"))
-
-baz = $(stringE . show =<< reify (mkName "Foo"))
-baza = $(offsetOfN (mkName "Bar"))
-
-buz = $(stringE . show =<< reify (mkName "ShaderInputVertex"))
-buza = $(offsetOfN (mkName "ShaderInputVertex"))
+-- buz = $(stringE . show =<< reify (mkName "ShaderInputVertex"))
+-- buza = $(offsetOfN (mkName "ShaderInputVertex"))

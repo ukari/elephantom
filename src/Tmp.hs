@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE DeriveDataTypeable #-}
--- {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -9,6 +8,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE LambdaCase #-}
+
 
 module Tmp
   ( module Tmp
@@ -31,24 +31,6 @@ data OffsetSelect
   | Normal Int
   deriving (Show)
 
-offsetOf :: (Data a, Storable a) => a -> String -> Q Exp
-offsetOf s field = do
-  let typename = dataTypeName . dataTypeOf $ s
-  let [fs] = fields s
-  let labels = map (varE . mkName) $ fs
-  x <- newName "x"
-  let normals = listE $ map (appE (lamE [varP x] (infixApp (varE x) (varE '($)) (nil s)))) (map (infixApp (infixApp fromInt dot sizeof) dot) labels)
-  case elemIndex field fs of
-    Just idx -> [|sum $ take idx $(normals) :: Int|]
-    Nothing -> error $ "field '" <> field <> "' is not found in " <> typename
-  where
-    sizeof = varE 'sizeOf
-    dot = varE '(.)
-    fromInt = varE 'fromIntegral
-    fields :: Data a => a -> [[String]]
-    fields = map constrFields . dataTypeConstrs . dataTypeOf
-    nil :: a -> Q Exp
-    nil _ = sigE (varE 'undefined) (varT . mkName $ "a")
 
 offsetOfN :: Name -> Q Exp
 offsetOfN name = do
@@ -69,17 +51,7 @@ offsetOfN name = do
               | otherwise = fail "only support c struct like storable types (shouldn't run here)"
         sizesE = listE sizes
         normalsLength = length sizes
-        
         rnames = map (nameBase . fst) records
-        
-        result | isNormal = [|\idx -> case idx < normalsLength of
-                               True -> sum $ take idx $(sizesE)
-                               False -> error $ "field with index '" <> show idx <> "' is not found in '" <> fullname <> "'"
-                             |]
-               | isRecord = [|\fieldstr -> case (elemIndex fieldstr rnames) of
-                               Just idx -> sum $ take idx $(sizesE)
-                               Nothing -> error $ "field '" <> fieldstr <> "' is not found in '" <> fullname <> "'"
-                             |]
     [|\case
        Record fieldstr -> case (elemIndex fieldstr rnames) of
          Just idx -> sum $ take idx $(sizesE)
@@ -88,13 +60,6 @@ offsetOfN name = do
          True -> sum $ take idx $(sizesE)
          False -> error $ "field with index '" <> show idx <> "' is not found in '" <> fullname <> "'"
      |]
-
-        --far = poo (head normals)     -- (ConT (varT $ mkName "Foo")) 
-    --undefined
-    --result
-    --sizes
-    
-    --far
   where
     fConT :: Con -> [Either (Type) (Name, Type)]
     fConT (NormalC _ iFields) = map (Left . fStrictType) iFields
@@ -112,28 +77,6 @@ offsetOfN name = do
     fromInt = varE 'fromIntegral
     trans :: Q Exp -> Q Exp
     trans = infixApp (infixApp fromInt dot sizeof) app
-
-offsetOf' :: (Data a, Storable a) => a -> Q Exp
-offsetOf' s = do
-  let typename = dataTypeName . dataTypeOf $ s
-  let [fs] = fields s
-  let labels = map (varE . mkName) $ fs
-  x <- newName "x"
-  let normals = listE $ map (appE (lamE [varP x] (infixApp (varE x) (varE '($)) (nil s)))) (map (infixApp (infixApp fromInt dot sizeof) dot) labels)
-  [|\field -> case elemIndex field fs of
-    Just idx -> sum $ take idx $(normals) :: Int
-    Nothing -> error $ "field '" <> field <> "' is not found in " <> typename
-   |]
-  where
-    sizeof = varE 'sizeOf
-    dot = varE '(.)
-    fromInt = varE 'fromIntegral
-    fields :: Data a => a -> [[String]]
-    fields = map constrFields . dataTypeConstrs . dataTypeOf
-    nil :: a -> Q Exp
-    nil _ = sigE (varE 'undefined) (varT . mkName $ "a")
-
-testX = [|\x -> x|]
 
 data Bar = Bar Int Int deriving (Generic, GStorable, Data)
 

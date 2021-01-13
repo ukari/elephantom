@@ -82,10 +82,6 @@ import Tmp
 import Shader
 import Offset
 
-
-foo = $(offsetOf @ShaderInputVertex (undefined::ShaderInputVertex)  "inColor")
-bar = $(offsetOf @ShaderInputVertex undefined  "inPosition")
-
 actor :: (Monad m, Show a, Num a, Ord a) => Maybe a -> m (Maybe a)
 actor = \case
   Just x -> do

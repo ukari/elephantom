@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 --{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Offset
   ( module Offset
@@ -14,12 +15,12 @@ import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Tmp
 --import Shader
 
-
-
-class (Storable a) => Offset a where
+class Offset a where
   offsetof :: a -> OffsetSelect -> Int
-  --offsetof _ = $(offsetOfN (mkName "a"))
 
--- instance Offset ShaderInputVertex where
---   offsetof _ field = $(offsetOf' (undefined::ShaderInputVertex)) field
-
+makeOffset :: Name -> Q [Dec]
+makeOffset iname = do
+  let func = offsetOfN iname :: Q Exp
+  [d|instance Offset iname where
+       offsetof _ = $(func)
+    |]
