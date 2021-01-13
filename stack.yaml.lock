@@ -5,6 +5,17 @@
 
 packages:
 - completed:
+    name: offset
+    version: 0.1.0.0
+    git: git@github.com:ukari/offset.git
+    pantry-tree:
+      size: 645
+      sha256: fb50369f5994fba89270748a51c8523a261d3c72634e13f1ddc0b05efc929cec
+    commit: 7b72ce7d76512c37029e1b40d26795f863fff147
+  original:
+    git: git@github.com:ukari/offset.git
+    commit: 7b72ce7d76512c37029e1b40d26795f863fff147
+- completed:
     hackage: repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
     pantry-tree:
       size: 2965

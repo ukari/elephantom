@@ -50,6 +50,7 @@ library:
   - fused-effects
   - transformers
   - derive-storable
+  - offset
 
 executables:
   elephantom:
