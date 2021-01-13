@@ -24,9 +24,11 @@ class Offset a where
 --   makeOffset ''Foo
 
 makeOffset :: Name -> Q [Dec]
-makeOffset iname = do
-  let func = offsetOf iname :: Q Exp
-  [d|instance Offset iname where
-       offsetof _ = $(func)
+makeOffset name = do
+  func <- offsetOf name :: Q Exp
+  let i = conT name
+  [d|instance Offset $(i) where
+      offsetof _ = $(pure func)
     |]
+  -- pure [(InstanceD Nothing [] (AppT (ConT ''Offset) (ConT name)) [FunD 'offsetof [Clause [WildP] (NormalB (func)) []]])] 
 
