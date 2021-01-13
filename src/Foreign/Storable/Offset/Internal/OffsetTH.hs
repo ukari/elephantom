@@ -5,8 +5,7 @@
 
 module Foreign.Storable.Offset.Internal.OffsetTH
   ( offsetOf
-  )
-  where
+  ) where
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax

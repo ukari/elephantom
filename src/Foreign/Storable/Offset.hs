@@ -14,7 +14,7 @@ import Foreign.Storable.Offset.Internal.OffsetTH (offsetOf)
 import Foreign.Storable.Offset.OffsetSelect (OffsetSelect (..))
 
 class Offset a where
-  offsetof :: a -> OffsetSelect -> Int
+  offsetof :: Num b => a -> OffsetSelect -> b
 
 -- https://downloads.haskell.org/~ghc/7.0.2/docs/html/users_guide/template-haskell.html
 -- > A name can be quoted with either one or two prefix single quotes:

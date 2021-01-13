@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -380,14 +381,13 @@ withShaderStages device = do
           [ zero
             { binding = 0
             , location = 0
-            , offset = 0 -- $(offsetOf (undefined::ShaderInputVertex) "inPosition")
-            -- offsetof (Struct{inPosition, inColor}, inPosition)
+            , offset = offsetof @ShaderInputVertex undefined (Normal 0)
             , format = FORMAT_R32G32_SFLOAT
             }
           , zero
             { binding = 0
             , location = 1
-            , offset = 8 -- offsetof (Struct{inPosition, inColor}, inColor)
+            , offset = offsetof @ShaderInputVertex undefined (Normal 1)
             , format = FORMAT_R32G32B32_SFLOAT
             }
           ]
