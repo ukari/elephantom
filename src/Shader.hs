@@ -1,8 +1,3 @@
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE FlexibleInstances #-}
-
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}

@@ -108,6 +108,18 @@ someFunc = runResourceT $ do
   SwapchainInfo {..} <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
   shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
   pipeline <- Lib.withPipeline device renderPass shaderStageInfo
+  (_, commandPool) <- withCommandPool device zero
+    { queueFamilyIndex = graphicsFamily indices
+    , flags = zeroBits
+    } Nothing allocate
+  (_, commandBuffers) <- withCommandBuffers device zero
+    { commandPool = commandPool
+    , level = COMMAND_BUFFER_LEVEL_PRIMARY
+    , commandBufferCount = fromIntegral $ length framebuffers
+    } allocate
+  commandBuffer <- return $ commandBuffers ! 0
+  (_, imageAvailableSemaphore) <- withSemaphore device zero Nothing allocate
+  (_, renderFinishedSemaphore) <- withSemaphore device zero Nothing allocate
   let fps = 60
   liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $ Just 2)
   return undefined
