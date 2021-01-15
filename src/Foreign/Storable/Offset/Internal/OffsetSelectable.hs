@@ -1,4 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 
@@ -12,8 +11,8 @@ class OffsetSelectable a where
   select :: a -> OffsetSelect
 
 
-instance {-# OVERLAPPABLE #-} (Integral a) => OffsetSelectable a where
+instance {-# INCOHERENT #-} (a ~ Int) => OffsetSelectable a where
   select = Normal . fromIntegral
 
-instance {-# OVERLAPPING #-} OffsetSelectable String where
+instance OffsetSelectable String where
   select = Record
