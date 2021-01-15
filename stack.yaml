@@ -67,7 +67,7 @@ packages:
 # compiler-check: newer-minor
 extra-deps:
 - git: git@github.com:ukari/offset.git
-  commit: 7b72ce7d76512c37029e1b40d26795f863fff147
+  commit: 6fb0f46ba00da3a4a59e175f6613a4ab826272f3
 - repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
 - JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
 - VulkanMemoryAllocator-0.3.11@sha256:429b59c2317cfa0c08124e31259c7626ef7d9fd0c6c5035a2205b0aaa5a1eac1,2860
