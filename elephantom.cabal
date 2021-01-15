@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 939cc18bbd13639a61c50ef966fd013093e44072c1769d553ec10fa4fc250139
+-- hash: 8f92a1c716f90f12afd6441087fe48a25729c29a0d1d710f812ae767f654265a
 
 name:           elephantom
 version:        0.1.0.0
@@ -28,8 +28,9 @@ source-repository head
 library
   exposed-modules:
       Foreign.Storable.Offset
+      Foreign.Storable.Offset.Internal.OffsetSelect
       Foreign.Storable.Offset.Internal.OffsetTH
-      Foreign.Storable.Offset.OffsetSelect
+      Foreign.Storable.Offset.OffsetSelectable
       Lib
       Offset
       Shader
@@ -73,7 +74,7 @@ executable elephantom
       Paths_elephantom
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Foreign.Storable.Generic.Plugin -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Foreign.Storable.Generic.Plugin -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1 -fprint-potential-instances
   build-depends:
       Cabal
     , base >=4.7 && <5

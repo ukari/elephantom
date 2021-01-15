@@ -1,4 +1,4 @@
-module Foreign.Storable.Offset.OffsetSelect
+module Foreign.Storable.Offset.Internal.OffsetSelect
   ( OffsetSelect (..)
   ) where
 

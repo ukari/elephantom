@@ -65,6 +65,8 @@ executables:
     #- -hiedir=.hie
     - -fplugin=Foreign.Storable.Generic.Plugin
     - -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1
+    #- -W
+    - -fprint-potential-instances
     dependencies:
     - elephantom
     - derive-storable-plugin

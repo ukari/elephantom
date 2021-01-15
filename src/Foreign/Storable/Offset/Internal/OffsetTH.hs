@@ -13,7 +13,7 @@ import Foreign.Storable (Storable (sizeOf))
 import Data.Either (lefts, rights)
 import Data.List (elemIndex)
 
-import Foreign.Storable.Offset.OffsetSelect (OffsetSelect (..))
+import Foreign.Storable.Offset.Internal.OffsetSelect (OffsetSelect (..))
 
 offsetOf :: Name -> Q Exp
 offsetOf name = do

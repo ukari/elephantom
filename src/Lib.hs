@@ -393,13 +393,13 @@ withShaderStages device = do
           [ zero
             { binding = 0
             , location = 0
-            , offset = offsetof @ShaderInputVertex undefined (Normal 0)
+            , offset = offsetof (undefined::ShaderInputVertex) (0::Int)
             , format = FORMAT_R32G32_SFLOAT
             }
           , zero
             { binding = 0
             , location = 1
-            , offset = offsetof @ShaderInputVertex undefined (Normal 1)
+            , offset = offsetof (undefined::ShaderInputVertex) ("inColor"::String)
             , format = FORMAT_R32G32B32_SFLOAT
             }
           ]
