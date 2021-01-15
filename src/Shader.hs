@@ -3,12 +3,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Shader
-  ( module Shader
+  ( ShaderInputVertex (..)
   )
   where
 
-import Linear (V2 (..), V3 (..))
 import GHC.Generics (Generic)
+import Linear (V2 (..), V3 (..))
 import Foreign.Storable.Generic (GStorable)
 
 import Offset

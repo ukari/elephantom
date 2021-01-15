@@ -30,6 +30,7 @@ module Lib
 
 import qualified SDL as SDL
 import qualified SDL.Video.Vulkan as SDL
+import Vulkan.Zero
 import Vulkan.CStruct.Extends
 import Vulkan hiding (allocate)
 import qualified Vulkan.Core10 as Core10
@@ -40,18 +41,18 @@ import Vulkan.Utils.ShaderQQ
 import Vulkan.Utils.Initialization
 --import Vulkan.Utils.QueueAssignment
 import Vulkan.Requirement
---import qualified VulkanMemoryAllocator as Vma
+import qualified VulkanMemoryAllocator as Vma
 
 import Language.Haskell.TH hiding (location)
 import Type.Reflection (SomeTypeRep, splitApps, typeOf)
-import GHC.Generics ((:*:) (..), Generic (..), M1 (..), K1 (..))
+import GHC.Generics (Generic)
 import Data.Data (Data, Typeable, constrFields, toConstr, dataTypeConstrs, dataTypeOf, maxConstrIndex, indexConstr)
-import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
-import Foreign.Storable.Generic.Internal (GStorable', internalOffsets)
-import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Storable (Storable (sizeOf, alignment))
 import qualified Foreign.Storable as Storable
+import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
+import Foreign.Ptr (Ptr, castPtr)
 import Linear (V2 (..), V3 (..))
+
 import qualified Linear as Linear
 import Data.Word (Word32)
 import Data.Text (Text (..))
@@ -93,9 +94,7 @@ actor = \case
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  -- putStrLn "someFunc"
-  --SDL.initialize [SDL.InitVideo]
-  --bracket_ (SDL.initialize [SDL.InitVideo]) SDL.quit allocate
+  
   withSDL
   window <- withWindow "test" 500 500
   inst <- withInst window
@@ -105,6 +104,13 @@ someFunc = runResourceT $ do
   liftIO $ print indices
   let queueIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
   device <- Lib.withDevice phys queueIndices
+  -- allocator <- Vma.withAllocator (zero
+  --   { Vma.flags = zero
+  --   , Vma.physicalDevice = phys
+  --   , Vma.device = device
+  --   , Vma.instance' = inst
+  --   , Vma.vulkanApiVersion = apiVersion (appInfo::ApplicationInfo)
+  --   }) allocate
   SwapchainInfo {..} <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
   shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
   pipeline <- Lib.withPipeline device renderPass shaderStageInfo

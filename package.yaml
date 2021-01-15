@@ -67,6 +67,7 @@ executables:
     - -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1
     #- -W
     - -fprint-potential-instances
+    - -j15
     dependencies:
     - elephantom
     - derive-storable-plugin

@@ -30,26 +30,40 @@ packages:
   original:
     hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
 - completed:
-    hackage: VulkanMemoryAllocator-0.3.11@sha256:429b59c2317cfa0c08124e31259c7626ef7d9fd0c6c5035a2205b0aaa5a1eac1,2860
+    hackage: VulkanMemoryAllocator-0.3.12@sha256:a4cbbb0fb4fb6221fb2911f6c26198a591b0cfe5f100f5df26a44e50da6f1e5f,2861
     pantry-tree:
       size: 524
-      sha256: f261a7a52c99f73c1e177af08502547cb750d01d76d33da53265a8fb07805cc7
+      sha256: 01daf655e88cb104e4db68c65f8d00232db7a335a31202cf046719af8033fe8c
   original:
-    hackage: VulkanMemoryAllocator-0.3.11@sha256:429b59c2317cfa0c08124e31259c7626ef7d9fd0c6c5035a2205b0aaa5a1eac1,2860
+    hackage: VulkanMemoryAllocator-0.3.12@sha256:a4cbbb0fb4fb6221fb2911f6c26198a591b0cfe5f100f5df26a44e50da6f1e5f,2861
 - completed:
-    hackage: vulkan-3.8@sha256:3bab55f6fb6c87ad1eb89243ecef7d3da3efc2ff943d55e391a8e8d1e1792639,23746
+    hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
     pantry-tree:
-      size: 65992
-      sha256: 86cdc38b7f95132d44d84085376667be3590ead0c4431e69ed3a2206cbcdcbc5
+      size: 901
+      sha256: daa96c321b4d81aac6c28d621aaf67681017fe4d277b3b713930e7dd8bfeb53e
   original:
-    hackage: vulkan-3.8@sha256:3bab55f6fb6c87ad1eb89243ecef7d3da3efc2ff943d55e391a8e8d1e1792639,23746
+    hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
 - completed:
-    hackage: vulkan-utils-0.4@sha256:d74e582532cede5c42dca376b7892d41340c14046a7da216c9c3d1fea879b722,3087
+    hackage: derive-storable-plugin-0.2.3.3@sha256:5e6fda22fc834d717c40b31b8a5110d0644176c4bf92f8f62481f50067531719,2787
+    pantry-tree:
+      size: 1408
+      sha256: 1bb72b68bf4a590acbbb27523125a4f543e4b094ae8f6d930147ef683d2173d2
+  original:
+    hackage: derive-storable-plugin-0.2.3.3@sha256:5e6fda22fc834d717c40b31b8a5110d0644176c4bf92f8f62481f50067531719,2787
+- completed:
+    hackage: vulkan-3.9@sha256:da8cbca7d57fa8f5011f0487aeda2020c0ab3c96377cf4e4cf3ec28603100201,24122
+    pantry-tree:
+      size: 66301
+      sha256: 22445f2a78735a97fd9c06efb9a52d0a1fc0aaa2615b9f6d377a8a791188c2d0
+  original:
+    hackage: vulkan-3.9@sha256:da8cbca7d57fa8f5011f0487aeda2020c0ab3c96377cf4e4cf3ec28603100201,24122
+- completed:
+    hackage: vulkan-utils-0.4.1@sha256:ab90c395ebd82f9849788dd846d792b01884a766f28a5f1ec27191bc59734730,3090
     pantry-tree:
       size: 1374
-      sha256: 86ac4f82da6e7e451cf3506cfe530233513a4a9d15abb7eb787bdbad8f5b20d3
+      sha256: 046e2e966ad9510e37aaec5fd148ce733d533aaceaa1c3a5bee6333ccbaecf56
   original:
-    hackage: vulkan-utils-0.4@sha256:d74e582532cede5c42dca376b7892d41340c14046a7da216c9c3d1fea879b722,3087
+    hackage: vulkan-utils-0.4.1@sha256:ab90c395ebd82f9849788dd846d792b01884a766f28a5f1ec27191bc59734730,3090
 - completed:
     hackage: dependent-map-0.4.0.0@sha256:ca2b131046f4340a1c35d138c5a003fe4a5be96b14efc26291ed35fd08c62221,1657
     pantry-tree:
@@ -71,20 +85,6 @@ packages:
       sha256: 3ce1012bfb02e4d7def9df19ce80b8cd2b472c691b25b181d9960638673fecd1
   original:
     hackage: constraints-extras-0.3.0.2@sha256:013b8d0392582c6ca068e226718a4fe8be8e22321cc0634f6115505bf377ad26,1853
-- completed:
-    hackage: derive-storable-plugin-0.2.3.3@sha256:5e6fda22fc834d717c40b31b8a5110d0644176c4bf92f8f62481f50067531719,2787
-    pantry-tree:
-      size: 1408
-      sha256: 1bb72b68bf4a590acbbb27523125a4f543e4b094ae8f6d930147ef683d2173d2
-  original:
-    hackage: derive-storable-plugin-0.2.3.3@sha256:5e6fda22fc834d717c40b31b8a5110d0644176c4bf92f8f62481f50067531719,2787
-- completed:
-    hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
-    pantry-tree:
-      size: 901
-      sha256: daa96c321b4d81aac6c28d621aaf67681017fe4d277b3b713930e7dd8bfeb53e
-  original:
-    hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
 snapshots:
 - completed:
     size: 533252
