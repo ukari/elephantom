@@ -1,18 +1,15 @@
-{-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Foreign.Storable.Offset
   ( makeOffset
   , Offset (..)
-  , module Foreign.Storable.Offset.OffsetSelectable
   ) where
 
 import Language.Haskell.TH
 
 import Foreign.Storable.Offset.Internal.OffsetTH (offsetOf)
-import Foreign.Storable.Offset.OffsetSelectable (OffsetSelectable (..))
+import Foreign.Storable.Offset.Internal.OffsetSelectable (OffsetSelectable (..))
 
 class Offset a where
   offsetof :: (OffsetSelectable b, Num c) => a -> b -> c

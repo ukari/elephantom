@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8f92a1c716f90f12afd6441087fe48a25729c29a0d1d710f812ae767f654265a
+-- hash: 226e02282bc08b591b5ef1870a69deabba2664b9e07cdc5ab20bf78c2525b899
 
 name:           elephantom
 version:        0.1.0.0
@@ -29,8 +29,8 @@ library
   exposed-modules:
       Foreign.Storable.Offset
       Foreign.Storable.Offset.Internal.OffsetSelect
+      Foreign.Storable.Offset.Internal.OffsetSelectable
       Foreign.Storable.Offset.Internal.OffsetTH
-      Foreign.Storable.Offset.OffsetSelectable
       Lib
       Offset
       Shader

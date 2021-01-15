@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 
-module Foreign.Storable.Offset.OffsetSelectable
+module Foreign.Storable.Offset.Internal.OffsetSelectable
   ( OffsetSelectable (..)
   ) where
 
