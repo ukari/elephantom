@@ -1,24 +1,15 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE TypeApplications #-}
+-- record field
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
+-- type
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
+
+-- sugar
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedLists #-}
@@ -54,9 +45,11 @@ import Foreign.Ptr (Ptr, castPtr)
 import Linear (V2 (..), V3 (..))
 
 import qualified Linear as Linear
+import Data.String (IsString)
 import Data.Word (Word32)
 import Data.Text (Text (..))
-import Data.ByteString (packCString)
+import Data.ByteString (packCString, pack)
+import Data.ByteString.Char8 (ByteString)
 import Data.Traversable (traverse)
 import Data.Bits ((.&.), (.|.), shift, zeroBits)
 import Data.Vector ((!), (!?), uniq, modify)
@@ -74,7 +67,7 @@ import qualified Streamly.Prelude as S
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 -- import Control.Monad.IO.Class
-import Control.Monad.Trans.Resource (ResourceT, runResourceT, allocate, allocate_, release, register)
+import Control.Monad.Trans.Resource (ResourceT, runResourceT, allocate, allocate_, release, register, liftResourceT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
@@ -104,13 +97,21 @@ someFunc = runResourceT $ do
   liftIO $ print indices
   let queueIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
   device <- Lib.withDevice phys queueIndices
-  -- allocator <- Vma.withAllocator (zero
-  --   { Vma.flags = zero
-  --   , Vma.physicalDevice = phys
-  --   , Vma.device = device
-  --   , Vma.instance' = inst
-  --   , Vma.vulkanApiVersion = apiVersion (appInfo::ApplicationInfo)
-  --   }) allocate
+  allocator <- snd <$> Vma.withAllocator zero
+    { Vma.flags = zero -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
+    , Vma.physicalDevice = physicalDeviceHandle phys
+    , Vma.device = deviceHandle device
+    , Vma.instance' = instanceHandle inst
+    , Vma.vulkanApiVersion = apiVersion (appInfo::ApplicationInfo)
+    } allocate
+  vertexBuffer <- Vma.withBuffer allocator zero
+    { size = 65535
+    , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
+    } allocate
+  --liftIO . (mapM_ (print)) $ ( Vma.getBudget allocator)
+  --mapM_ id (Vma.getBudget allocator)
   SwapchainInfo {..} <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
   shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
   pipeline <- Lib.withPipeline device renderPass shaderStageInfo
@@ -188,13 +189,19 @@ withInst :: SDL.Window -> Managed Instance
 withInst window = do
   extensionsCString <- SDL.vkGetInstanceExtensions window
   extensions <- liftIO $ traverse packCString extensionsCString
-  inst <- createDebugInstanceFromRequirements [ RequireInstanceExtension Nothing ext minBound | ext <- extensions ] [] zero { applicationInfo = Just appInfo }
+  let optionals =
+        [ KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -- the dependency of device extension EXT_MEMORY_BUDGET_EXTENSION_NAME
+        ]
+  inst <- createDebugInstanceFromRequirements (require extensions) (require optionals) zero { applicationInfo = Just appInfo }
   pure inst
+  where
+    require :: "extensions" ::: [ByteString] -> [InstanceRequirement]
+    require = map (flip (RequireInstanceExtension Nothing) minBound)
 
 withSurface :: Instance -> SDL.Window -> Managed SurfaceKHR
 withSurface inst window = do
-  (_key, surf) <- allocate (SurfaceKHR <$> SDL.vkCreateSurface window (castPtr $ instanceHandle inst))
-    (\s -> destroySurfaceKHR inst s Nothing)
+  (_key, surf) <- allocate (SurfaceKHR <$> SDL.vkCreateSurface window (castPtr . instanceHandle $ inst))
+    (flip (destroySurfaceKHR inst) Nothing)
   pure surf
 
 getPhysicalDevice :: MonadIO m => Instance -> m PhysicalDevice
@@ -227,19 +234,27 @@ findQueueFamilyIndices pdevice surf = do
 
 withDevice :: PhysicalDevice -> "queueFamilyIndices" ::: V.Vector Word32 -> Managed Device
 withDevice phys indices = do
+  let extensions = [ KHR_SWAPCHAIN_EXTENSION_NAME ]
+  let optionals =
+        [ EXT_MEMORY_BUDGET_EXTENSION_NAME -- VulkanMemoryAllocator vmaGetBudget
+        ]
   let deviceCreateInfo :: DeviceCreateInfo '[]
       deviceCreateInfo = zero
         { queueCreateInfos = V.fromList
           [ SomeStruct $ zero
             { queueFamilyIndex = i
-            , queuePriorities = [1]
+            , queuePriorities = [ 1 ]
             }
           | i <- V.toList $ indices
           ]
-        , enabledLayerNames = []
-        , enabledExtensionNames = [ KHR_SWAPCHAIN_EXTENSION_NAME ]
+        -- , enabledLayerNames = []
+        -- , enabledExtensionNames = extensions <> optionals
         }
-  pure . snd =<< Vulkan.withDevice phys deviceCreateInfo Nothing allocate
+  device <- createDeviceFromRequirements (require extensions) (require optionals) phys deviceCreateInfo
+  pure device
+  where
+    require :: "extensions" ::: [ByteString] -> [DeviceRequirement]
+    require = map (flip (RequireDeviceExtension Nothing) minBound)
 
 data SwapchainInfo = SwapchainInfo
   { swapchain :: SwapchainKHR

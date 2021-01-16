@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4bc05a29f4e575b801559af516e34db9dec57117a9a26d813b4d327ae3af7e9d
+-- hash: 3c5ff3d39e8faef53545e69764c291bd7e465355f3da6d033d07335349421824
 
 name:           elephantom
 version:        0.1.0.0
@@ -43,7 +43,7 @@ library
     , JuicyPixels
     , JuicyPixels-repa
     , Rasterific
-    , VulkanMemoryAllocator >=0.3.12
+    , VulkanMemoryAllocator
     , base >=4.7 && <5
     , bytestring
     , containers
@@ -74,7 +74,7 @@ executable elephantom
       Paths_elephantom
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Foreign.Storable.Generic.Plugin -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1 -fprint-potential-instances -j15
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Foreign.Storable.Generic.Plugin -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1
   build-depends:
       Cabal
     , base >=4.7 && <5
