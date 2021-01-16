@@ -97,8 +97,9 @@ someFunc = runResourceT $ do
   liftIO $ print indices
   let queueIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
   device <- Lib.withDevice phys queueIndices
+  -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
-    { Vma.flags = zero -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
+    { Vma.flags = Vma.ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT -- vmaGetBudget
     , Vma.physicalDevice = physicalDeviceHandle phys
     , Vma.device = deviceHandle device
     , Vma.instance' = instanceHandle inst
