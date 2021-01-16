@@ -68,7 +68,7 @@ import qualified Streamly.Prelude as S
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 -- import Control.Monad.IO.Class
-import Control.Monad.Trans.Resource (ResourceT, runResourceT, allocate, allocate_, release, register, liftResourceT)
+import Control.Monad.Trans.Resource (MonadResource, ResourceT, runResourceT, allocate, allocate_, release, register, liftResourceT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
@@ -126,8 +126,9 @@ someFunc = runResourceT $ do
     , Vma.instance' = instanceHandle inst
     , Vma.vulkanApiVersion = apiVersion (appInfo :: ApplicationInfo)
     } allocate
+
   vertexBuffer <- Vma.withBuffer allocator zero
-    { size = 65535
+    { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
     , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
@@ -153,7 +154,7 @@ someFunc = runResourceT $ do
   liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $ Just 2)
   return undefined
 
-type Managed a = forall m . MonadIO m => ResourceT m a
+type Managed a = forall m . MonadResource m => m a
 
 data AppException
   = ImageLoadException String
@@ -209,8 +210,7 @@ withInst window = do
   let optionals =
         [ KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -- the dependency of device extension EXT_MEMORY_BUDGET_EXTENSION_NAME
         ]
-  inst <- createDebugInstanceFromRequirements (require extensions) (require optionals) zero { applicationInfo = Just appInfo }
-  pure inst
+  createDebugInstanceFromRequirements (require extensions) (require optionals) zero { applicationInfo = Just appInfo }
   where
     require :: "extensions" ::: [ByteString] -> [InstanceRequirement]
     require = map (flip (RequireInstanceExtension Nothing) minBound) . promote
@@ -269,8 +269,7 @@ withDevice phys indices = do
         -- , enabledLayerNames = []
         -- , enabledExtensionNames = extensions <> optionals
         }
-  device <- createDeviceFromRequirements (require extensions) (require optionals) phys deviceCreateInfo
-  pure device
+  createDeviceFromRequirements (require extensions) (require optionals) phys deviceCreateInfo
   where
     require :: "extensions" ::: [ByteString] -> [DeviceRequirement]
     require = map (flip (RequireDeviceExtension Nothing) minBound) . promote
