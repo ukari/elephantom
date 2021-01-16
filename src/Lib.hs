@@ -1,4 +1,3 @@
-{-# LANGUAGE PatternSynonyms #-}
 -- record field
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -10,6 +9,7 @@
 {-# LANGUAGE DataKinds #-}
 
 -- sugar
+--{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -43,7 +43,7 @@ import Foreign.Storable (Storable (sizeOf, alignment))
 import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
-import Linear (V2 (..), V3 (..))
+import Linear (V2 (..), V3 (..), M44 (..))
 
 import qualified Linear as Linear
 import Data.String (IsString)
@@ -77,10 +77,9 @@ import Control.Exception (Exception (..), throw)
 import Shader
 import Offset
 
-
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing
-               , apiVersion = API_VERSION_1_1
+               , apiVersion = API_VERSION_1_0
                }
 
 promote :: [ByteString] -> [ByteString]
@@ -116,8 +115,9 @@ someFunc = runResourceT $ do
   phys <- getPhysicalDevice inst
   indices <- findQueueFamilyIndices phys surf
   liftIO $ print indices
-  let queueIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
-  device <- Lib.withDevice phys queueIndices
+  let queueFamilyIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
+  device <- Lib.withDevice phys queueFamilyIndices
+  liftIO $ print $ "device " <> show (deviceHandle device)
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
     { Vma.flags = Vma.ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT -- vmaGetBudget
@@ -129,13 +129,35 @@ someFunc = runResourceT $ do
 
   vertexBuffer <- Vma.withBuffer allocator zero
     { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
-    , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT
+    , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT -- support vkCmdBindVertexBuffers.pBuffers
+    , sharingMode = SHARING_MODE_EXCLUSIVE -- chooseSharingMode queueFamilyIndices
+    -- , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU -- Vma.MEMORY_USAGE_GPU_ONLY
+    } allocate
+  memoryIndex <- Vma.findMemoryTypeIndexForBufferInfo allocator zero
+    { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
+    , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT -- support vkCmdBindVertexBuffers.pBuffers
+    , sharingMode = SHARING_MODE_EXCLUSIVE -- chooseSharingMode queueFamilyIndices
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU -- Vma.MEMORY_USAGE_GPU_ONLY
+    }
+  liftIO $ print $ "memory index " <> show memoryIndex
+  let vertices =
+        [ ShaderInputVertex (V2 0 1) (V3 1 1 1)
+        , ShaderInputVertex (V2 (-1) (-1)) (V3 1 1 1)
+        , ShaderInputVertex (V2 1 (-1)) (V3 1 1 1)
+        ] :: [ShaderInputVertex]
+  uniformBuffer <- Vma.withBuffer allocator zero
+    { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
+    , usage = BUFFER_USAGE_UNIFORM_BUFFER_BIT -- .|. BUFFER_USAGE_TRANSFER_DST_BIT
+    , sharingMode = chooseSharingMode queueFamilyIndices
+    , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  --liftIO . (mapM_ (print)) $ ( Vma.getBudget allocator)
-  --mapM_ id (Vma.getBudget allocator)
-  SwapchainInfo {..} <- withSwapchain phys surf device queueIndices (Extent2D 500 500)
+  
+  SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
   pipeline <- Lib.withPipeline device renderPass shaderStageInfo
   (_, commandPool) <- withCommandPool device zero
@@ -284,6 +306,10 @@ data SwapchainInfo = SwapchainInfo
   , renderPass :: RenderPass
   }
 
+chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode
+chooseSharingMode indices | length indices == 1 = SHARING_MODE_EXCLUSIVE
+                          | otherwise = SHARING_MODE_CONCURRENT
+
 withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> Managed SwapchainInfo
 withSwapchain phys surf device indices extent = do
   (_, formats) <- getPhysicalDeviceSurfaceFormatsKHR phys surf
@@ -293,9 +319,7 @@ withSwapchain phys surf device indices extent = do
   liftIO $ print presentModes
   let presentMode = tryWith PRESENT_MODE_FIFO_KHR (V.find (== PRESENT_MODE_MAILBOX_KHR) presentModes)
   surfaceCaps <- getPhysicalDeviceSurfaceCapabilitiesKHR phys surf
-  let sharingMode = if length indices == 1
-      then SHARING_MODE_EXCLUSIVE
-      else SHARING_MODE_CONCURRENT
+  let sharingMode = chooseSharingMode indices
   let swapchainCreateInfo :: SwapchainCreateInfoKHR '[]
       swapchainCreateInfo = zero
         { surface = surf
@@ -424,7 +448,7 @@ withShaderStages device = do
         { vertexBindingDescriptions =
           [ zero
             { binding = 0
-            , stride = 20 -- sizeof inPosition + inColor
+            , stride = fromIntegral . sizeOf $ (undefined :: ShaderInputVertex)
             , inputRate = VERTEX_INPUT_RATE_VERTEX
             }
           ]
