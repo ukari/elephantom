@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 -- record field
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -76,6 +77,26 @@ import Control.Exception (Exception (..), throw)
 import Shader
 import Offset
 
+
+appInfo :: ApplicationInfo
+appInfo = zero { applicationName = Nothing
+               , apiVersion = API_VERSION_1_1
+               }
+
+promote :: [ByteString] -> [ByteString]
+promote = filter $ p . promoteTo
+  where
+    p :: Maybe Word32 -> Bool
+    p (Just promoteVersion) = apiVersion (appInfo :: ApplicationInfo) < promoteVersion
+    p Nothing = True
+
+promoteTo :: ByteString -> Maybe Word32
+promoteTo = \case
+  KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -> Just API_VERSION_1_1
+  KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -> Just API_VERSION_1_1
+  KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -> Just API_VERSION_1_1
+  _ -> Nothing
+
 actor :: (Monad m, Show a, Num a, Ord a) => Maybe a -> m (Maybe a)
 actor = \case
   Just x -> do
@@ -103,7 +124,7 @@ someFunc = runResourceT $ do
     , Vma.physicalDevice = physicalDeviceHandle phys
     , Vma.device = deviceHandle device
     , Vma.instance' = instanceHandle inst
-    , Vma.vulkanApiVersion = apiVersion (appInfo::ApplicationInfo)
+    , Vma.vulkanApiVersion = apiVersion (appInfo :: ApplicationInfo)
     } allocate
   vertexBuffer <- Vma.withBuffer allocator zero
     { size = 65535
@@ -162,11 +183,6 @@ tryWithE ex = \case
   Just x -> x
   Nothing -> throw ex
 
-appInfo :: ApplicationInfo
-appInfo = zero { applicationName = Nothing
-               , apiVersion = API_VERSION_1_0
-               }
-
 withSDL :: Managed ()
 withSDL = do
   _sdlInitKey <- allocate_ (SDL.initialize ([SDL.InitVideo] :: [SDL.InitFlag])) SDL.quit
@@ -197,7 +213,7 @@ withInst window = do
   pure inst
   where
     require :: "extensions" ::: [ByteString] -> [InstanceRequirement]
-    require = map (flip (RequireInstanceExtension Nothing) minBound)
+    require = map (flip (RequireInstanceExtension Nothing) minBound) . promote
 
 withSurface :: Instance -> SDL.Window -> Managed SurfaceKHR
 withSurface inst window = do
@@ -237,7 +253,9 @@ withDevice :: PhysicalDevice -> "queueFamilyIndices" ::: V.Vector Word32 -> Mana
 withDevice phys indices = do
   let extensions = [ KHR_SWAPCHAIN_EXTENSION_NAME ]
   let optionals =
-        [ EXT_MEMORY_BUDGET_EXTENSION_NAME -- VulkanMemoryAllocator vmaGetBudget
+        [ EXT_MEMORY_BUDGET_EXTENSION_NAME -- vmaGetBudget
+        , KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -- vma use it automatically, promoted to API_VERSION_1_1
+        , KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -- dependency of KHR_DEDICATED_ALLOCATION_EXTENSION_NAME, promoted to API_VERSION_1_1
         ]
   let deviceCreateInfo :: DeviceCreateInfo '[]
       deviceCreateInfo = zero
@@ -255,7 +273,7 @@ withDevice phys indices = do
   pure device
   where
     require :: "extensions" ::: [ByteString] -> [DeviceRequirement]
-    require = map (flip (RequireDeviceExtension Nothing) minBound)
+    require = map (flip (RequireDeviceExtension Nothing) minBound) . promote
 
 data SwapchainInfo = SwapchainInfo
   { swapchain :: SwapchainKHR
@@ -415,13 +433,13 @@ withShaderStages device = do
           [ zero
             { binding = 0
             , location = 0
-            , offset = offsetof (undefined::ShaderInputVertex) (0::Int)
+            , offset = offsetof (undefined :: ShaderInputVertex) (0 :: Int)
             , format = FORMAT_R32G32_SFLOAT
             }
           , zero
             { binding = 0
             , location = 1
-            , offset = offsetof (undefined::ShaderInputVertex) ("inColor"::String)
+            , offset = offsetof (undefined :: ShaderInputVertex) ("inColor" :: String)
             , format = FORMAT_R32G32B32_SFLOAT
             }
           ]
@@ -435,7 +453,7 @@ withDescriptorSetLayout device descriptorSetLayoutCreateInfo =
 withRenderPass :: Device -> SurfaceFormatKHR -> Managed RenderPass
 withRenderPass device surfFormat = do
   colorAttachment <- pure (zero
-    { format = format (surfFormat::SurfaceFormatKHR)
+    { format = format (surfFormat :: SurfaceFormatKHR)
     , samples = SAMPLE_COUNT_1_BIT
     , loadOp = ATTACHMENT_LOAD_OP_CLEAR
     , storeOp = ATTACHMENT_STORE_OP_STORE
@@ -462,8 +480,8 @@ withFramebuffer device curExtent renderPass imageView =
   snd <$> Vulkan.withFramebuffer device zero
     { renderPass = renderPass
     , attachments = [ imageView ]
-    , width = width (curExtent::Extent2D)
-    , height = height (curExtent::Extent2D)
+    , width = width (curExtent :: Extent2D)
+    , height = height (curExtent :: Extent2D)
     , layers = 1
     } Nothing allocate
 
