@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- sugar
 --{-# LANGUAGE PatternSynonyms #-}
@@ -43,6 +44,7 @@ import Foreign.Storable (Storable (sizeOf, alignment))
 import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
+import Foreign.Marshal.Utils (copyBytes)
 import Linear (V2 (..), V3 (..), M44 (..))
 
 import qualified Linear as Linear
@@ -54,7 +56,7 @@ import Data.ByteString.Char8 (ByteString)
 import Data.Traversable (traverse)
 import Data.Bits ((.&.), (.|.), shift, zeroBits)
 import Data.Vector ((!), (!?), uniq, modify)
-import qualified Data.Vector.Storable as Storable
+import qualified Data.Vector.Storable as VS
 import qualified Data.Vector as V
 import Data.Vector.Algorithms.Intro (sort)
 import Data.Vector.Algorithms.Intro as V
@@ -126,28 +128,25 @@ someFunc = runResourceT $ do
     , Vma.instance' = instanceHandle inst
     , Vma.vulkanApiVersion = apiVersion (appInfo :: ApplicationInfo)
     } allocate
-
-  vertexBuffer <- Vma.withBuffer allocator zero
+  (vertexBuffer, vertexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
     , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT -- support vkCmdBindVertexBuffers.pBuffers
     , sharingMode = SHARING_MODE_EXCLUSIVE -- chooseSharingMode queueFamilyIndices
     -- , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU -- Vma.MEMORY_USAGE_GPU_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  memoryIndex <- Vma.findMemoryTypeIndexForBufferInfo allocator zero
-    { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
-    , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT -- support vkCmdBindVertexBuffers.pBuffers
-    , sharingMode = SHARING_MODE_EXCLUSIVE -- chooseSharingMode queueFamilyIndices
-    } zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU -- Vma.MEMORY_USAGE_GPU_ONLY
-    }
-  liftIO $ print $ "memory index " <> show memoryIndex
+  (vertexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator vertexBuffer zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    } allocate
+  
   let vertices =
         [ ShaderInputVertex (V2 0 1) (V3 1 1 1)
         , ShaderInputVertex (V2 (-1) (-1)) (V3 1 1 1)
         , ShaderInputVertex (V2 1 (-1)) (V3 1 1 1)
-        ] :: [ShaderInputVertex]
+        ] :: VS.Vector ShaderInputVertex
+  runResourceT $ memCopy allocator vertexBufferMemoryAllocation vertices -- early free
+  
   uniformBuffer <- Vma.withBuffer allocator zero
     { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
     , usage = BUFFER_USAGE_UNIFORM_BUFFER_BIT -- .|. BUFFER_USAGE_TRANSFER_DST_BIT
@@ -557,3 +556,10 @@ withPipeline device renderPass ShaderStageInfo {..} = do
       } ] Nothing allocate
   pipeline <- return $ pipelines ! 0
   return pipeline
+
+memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> Managed ()
+memCopy allocator memAllocation datas = do
+  bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
+  liftIO $ VS.unsafeWith datas $ \ptr ->
+    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral ((sizeOf (undefined::a)) * VS.length datas)
+
