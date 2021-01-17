@@ -44,8 +44,8 @@ import Foreign.Storable (Storable (sizeOf, alignment))
 import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
-import Foreign.Marshal.Utils (copyBytes)
-import Linear (V2 (..), V3 (..), M44 (..))
+import Foreign.Marshal.Utils (copyBytes, with)
+import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), lookAt, ortho, mkTransformation, axisAngle, scaled)
 
 import qualified Linear as Linear
 import Data.String (IsString)
@@ -137,17 +137,16 @@ someFunc = runResourceT $ do
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
   (vertexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator vertexBuffer zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
     } allocate
-  
   let vertices =
         [ ShaderInputVertex (V2 0 1) (V3 1 1 1)
         , ShaderInputVertex (V2 (-1) (-1)) (V3 1 1 1)
         , ShaderInputVertex (V2 1 (-1)) (V3 1 1 1)
         ] :: VS.Vector ShaderInputVertex
   runResourceT $ memCopy allocator vertexBufferMemoryAllocation vertices -- early free
-  
-  uniformBuffer <- Vma.withBuffer allocator zero
+
+  (uniformBuffer, uniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
     , usage = BUFFER_USAGE_UNIFORM_BUFFER_BIT -- .|. BUFFER_USAGE_TRANSFER_DST_BIT
     , sharingMode = chooseSharingMode queueFamilyIndices
@@ -155,6 +154,15 @@ someFunc = runResourceT $ do
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
+  (uniformBufferAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator uniformBuffer zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
+    } allocate
+  let uniform = ShaderUniform
+        { view = lookAt 0 0 0
+        , proj = ortho 0 500 500 0 0 0
+        , model = mkTransformation (axisAngle (V3 1 1 0) 90) (V3 0 1 0) !*! scaled 0.5
+        }
+  runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
   
   SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
@@ -561,5 +569,10 @@ memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allo
 memCopy allocator memAllocation datas = do
   bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
   liftIO $ VS.unsafeWith datas $ \ptr ->
-    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral ((sizeOf (undefined::a)) * VS.length datas)
+    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral ((sizeOf (undefined :: a)) * VS.length datas)
 
+memCopyU :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> a -> Managed ()
+memCopyU allocator memAllocation datas = do
+  bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
+  liftIO $ with datas $ \ptr ->
+    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral . sizeOf $ (undefined :: a)
