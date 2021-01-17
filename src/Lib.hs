@@ -11,6 +11,7 @@
 
 -- sugar
 --{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -120,6 +121,20 @@ someFunc = runResourceT $ do
   let queueFamilyIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
+  SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
+  shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
+  PipelineResource {..} <- Lib.withPipeline device renderPass shaderStageInfo
+  (_, commandPool) <- withCommandPool device zero
+    { queueFamilyIndex = graphicsFamily indices
+    , flags = zeroBits
+    } Nothing allocate
+  (_, commandBuffers) <- withCommandBuffers device zero
+    { commandPool = commandPool
+    , level = COMMAND_BUFFER_LEVEL_PRIMARY
+    , commandBufferCount = fromIntegral $ length framebuffers
+    } allocate
+  commandBuffer <- return $ commandBuffers ! 0
+  
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
     { Vma.flags = Vma.ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT -- vmaGetBudget
@@ -163,20 +178,77 @@ someFunc = runResourceT $ do
         , model = mkTransformation (axisAngle (V3 1 1 0) 90) (V3 0 1 0) !*! scaled 0.5
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
-  
-  SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
-  shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
-  pipeline <- Lib.withPipeline device renderPass shaderStageInfo
-  (_, commandPool) <- withCommandPool device zero
-    { queueFamilyIndex = graphicsFamily indices
-    , flags = zeroBits
+  descriptorPool <- snd <$> withDescriptorPool device zero
+    { poolSizes =
+        [ zero
+          { type' = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+          , descriptorCount = fromIntegral . length $ images
+          }
+        ]
+    , maxSets = fromIntegral . length $ images
+    , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT -- VUID-vkFreeDescriptorSets-descriptorPool-00312: descriptorPool must have been created with the VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag
     } Nothing allocate
-  (_, commandBuffers) <- withCommandBuffers device zero
-    { commandPool = commandPool
-    , level = COMMAND_BUFFER_LEVEL_PRIMARY
-    , commandBufferCount = fromIntegral $ length framebuffers
+  descriptorSets <- snd <$> withDescriptorSets device zero
+    { descriptorPool = descriptorPool
+    , setLayouts = descriptorSetLayouts
     } allocate
-  commandBuffer <- return $ commandBuffers ! 0
+  liftIO $ print descriptorSets
+  let bufferInfos :: V.Vector DescriptorBufferInfo
+      bufferInfos =
+        [ zero
+          { buffer = uniformBuffer
+          , offset = 0
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        ]
+  updateDescriptorSets device
+    [ SomeStruct $ zero
+      { dstSet = descriptorSets ! 0
+      , dstBinding = 0
+      , dstArrayElement = 0
+      , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+      , descriptorCount = fromIntegral . length $ bufferInfos
+      , bufferInfo = bufferInfos
+      , imageInfo = []
+      , texelBufferView = []
+      }
+    ] []
+  useCommandBuffer commandBuffer zero
+    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    } do
+    cmdUseRenderPass commandBuffer zero
+      { renderPass = renderPass
+      , framebuffer = framebuffers ! 0
+      , renderArea = Rect2D
+        { offset = zero
+        , extent = extent
+        }
+      , clearValues = [ Color $ Float32 0 0 0 1 ] -- TODO
+      } SUBPASS_CONTENTS_INLINE do
+        cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
+        let vertexBuffers = [ vertexBuffer ]
+        let offsets = const 0 <$> vertexBuffers
+        let viewports =
+              [ Viewport
+                { x = 0
+                , y = 0
+                , width = 500
+                , height = 500
+                , minDepth = 0
+                , maxDepth = 1
+                }
+              ]
+        let scissors =
+              [ Rect2D
+                { offset = Offset2D 0 0
+                , extent = extent
+                }
+              ]
+        cmdSetViewport commandBuffer 0 viewports
+        cmdSetScissor commandBuffer 0 scissors
+        cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
+        cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
+        cmdDraw commandBuffer (fromIntegral . VS.length $ vertices) 1 0 0
   (_, imageAvailableSemaphore) <- withSemaphore device zero Nothing allocate
   (_, renderFinishedSemaphore) <- withSemaphore device zero Nothing allocate
   let fps = 60
@@ -515,7 +587,12 @@ withFramebuffer device curExtent renderPass imageView =
     , layers = 1
     } Nothing allocate
 
-withPipeline :: Device -> RenderPass -> ShaderStageInfo -> Managed Pipeline
+data PipelineResource = PipelineResource
+  { pipeline :: !Pipeline
+  , pipelineLayout :: !PipelineLayout
+  } deriving (Show)
+
+withPipeline :: Device -> RenderPass -> ShaderStageInfo -> Managed PipelineResource
 withPipeline device renderPass ShaderStageInfo {..} = do
   (_, pipelineLayout) <- withPipelineLayout device zero
     { setLayouts = descriptorSetLayouts
@@ -529,7 +606,10 @@ withPipeline device renderPass ShaderStageInfo {..} = do
         { topology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
         , primitiveRestartEnable = False
         }
-      , viewportState = Just $ SomeStruct zero { viewportCount = 1, scissorCount = 1 }
+      , viewportState = Just $ SomeStruct zero
+        { viewportCount = 1
+        , scissorCount = 1
+        }
       , rasterizationState = SomeStruct $ zero
         { depthClampEnable = False
         , rasterizerDiscardEnable = False
@@ -563,7 +643,7 @@ withPipeline device renderPass ShaderStageInfo {..} = do
       , basePipelineHandle = zero
       } ] Nothing allocate
   pipeline <- return $ pipelines ! 0
-  return pipeline
+  pure PipelineResource {..}
 
 memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> Managed ()
 memCopy allocator memAllocation datas = do
