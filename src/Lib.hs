@@ -63,11 +63,13 @@ import Data.Vector.Algorithms.Intro (sort)
 import Data.Vector.Algorithms.Intro as V
 --import Data.Set (Set, union)
 --import qualified Data.Set as Set
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing, isJust)
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
 import qualified Streamly.Prelude as S
+import Control.Applicative ((<|>), Applicative (..), optional)
+import Control.Monad (join)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 -- import Control.Monad.IO.Class
@@ -98,35 +100,6 @@ promoteTo = \case
   KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -> Just API_VERSION_1_1
   KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -> Just API_VERSION_1_1
   _ -> Nothing
-
-actor :: (Monad m, Show a, Num a, Ord a) => Maybe a -> m (Maybe a)
-actor = \case
-  Just x -> do
-    --liftIO $ print x
-    if x < 10
-      then pure $ Just (x + 1)
-      else pure $ Just x -- Nothing
-  Nothing -> pure $ Just 0
-
-actor' :: (Show a, Num a, Ord a) => a -> (Maybe a)
-actor' x =
-  if x < 10
-  then Just $ x + 1
-  else Just $ x
-
-actorF :: (Monad m, Show a, Num a, Ord a) => a -> m (Maybe a)
-actorF x = do
-  if x < 10
-    then pure $ Just $ x + 1
-    else pure $ Just $ x
-
-f :: (a -> Maybe a) -> Maybe a -> Maybe a
-f g (Just x) = g x
-f g (Nothing) = Nothing
-
-f' :: Monad m => (a -> m (Maybe a)) -> Maybe a -> m (Maybe a)
-f' g (Just x) = g x
-f' g (Nothing) = pure Nothing
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
@@ -282,7 +255,7 @@ someFunc = runResourceT $ do
     }
   
   let fps = 60
-  --liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM ((drawFrame =<<)) (pure $ Frame)
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps $ S.iterateM (maybe (pure Nothing) drawFrame) (pure . Just $ Frame)
   return undefined
 
 type Managed a = forall m . MonadResource m => m a
