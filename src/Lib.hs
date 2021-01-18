@@ -108,6 +108,16 @@ actor = \case
       else pure $ Just x -- Nothing
   Nothing -> pure $ Just 0
 
+actor' :: (Show a, Num a, Ord a) => a -> (Maybe a)
+actor' x =
+  if x < 10
+  then Just $ x + 1
+  else Just $ x
+
+f :: (a -> Maybe a) -> Maybe a -> Maybe a
+f g (Just x) = g x
+f g (Nothing) = Nothing
+
 someFunc :: IO ()
 someFunc = runResourceT $ do
   
@@ -121,6 +131,8 @@ someFunc = runResourceT $ do
   let queueFamilyIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
+  graphicsQueue <- getDeviceQueue device (graphicsFamily indices) 0
+  presentQueue <- getDeviceQueue device (presentFamily indices) 0
   SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
   PipelineResource {..} <- Lib.withPipeline device renderPass shaderStageInfo
@@ -251,8 +263,16 @@ someFunc = runResourceT $ do
         cmdDraw commandBuffer (fromIntegral . VS.length $ vertices) 1 0 0
   (_, imageAvailableSemaphore) <- withSemaphore device zero Nothing allocate
   (_, renderFinishedSemaphore) <- withSemaphore device zero Nothing allocate
+  (_, imageIndex) <- acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
+  queueSubmit graphicsQueue [] zero
+  queuePresentKHR presentQueue zero
+    { Swap.waitSemaphores = []
+    , swapchains = [ swapchain ]
+    , imageIndices = [ 0 ]
+    }
+  
   let fps = 60
-  liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM actor (pure $ Just 2)
+  liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM (pure . (actor' =<<)) (pure $ Just (2::Int))
   return undefined
 
 type Managed a = forall m . MonadResource m => m a
