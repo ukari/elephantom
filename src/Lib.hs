@@ -114,9 +114,19 @@ actor' x =
   then Just $ x + 1
   else Just $ x
 
+actorF :: (Monad m, Show a, Num a, Ord a) => a -> m (Maybe a)
+actorF x = do
+  if x < 10
+    then pure $ Just $ x + 1
+    else pure $ Just $ x
+
 f :: (a -> Maybe a) -> Maybe a -> Maybe a
 f g (Just x) = g x
 f g (Nothing) = Nothing
+
+f' :: Monad m => (a -> m (Maybe a)) -> Maybe a -> m (Maybe a)
+f' g (Just x) = g x
+f' g (Nothing) = pure Nothing
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
@@ -272,7 +282,7 @@ someFunc = runResourceT $ do
     }
   
   let fps = 60
-  liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM (pure . (actor' =<<)) (pure $ Just (2::Int))
+  --liftIO $ S.drainWhile (/= Nothing) $ S.drop 1 $ asyncly $ constRate fps $ S.iterateM ((drawFrame =<<)) (pure $ Frame)
   return undefined
 
 type Managed a = forall m . MonadResource m => m a
@@ -676,3 +686,21 @@ memCopyU allocator memAllocation datas = do
   bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
   liftIO $ with datas $ \ptr ->
     copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral . sizeOf $ (undefined :: a)
+
+data Frame = Frame
+  {
+  }
+
+
+type Actor a = a -> (Maybe a)
+
+drawFrame :: Monad m => Frame -> m (Maybe Frame)
+drawFrame x = do
+  --window <- withWindow "test" 500 500
+  pure $ Just x
+
+type Actor' m a = a -> (Maybe a)
+-- drawFrame :: Actor Frame
+-- drawFrame x = do
+--   --window <- return $ withWindow "test" 500 500
+--   Just Frame
