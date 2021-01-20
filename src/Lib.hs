@@ -222,10 +222,11 @@ someFunc = runResourceT $ do
       }
     ] []
   mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] descriptorSets (VS.length vertices)) ( V.zip commandBuffers framebuffers)
-  (_, imageAvailableSemaphore) <- withSemaphore device zero Nothing allocate
-  (_, renderFinishedSemaphore) <- withSemaphore device zero Nothing allocate
+
+  SyncResource {..} <- withSyncResource device framebuffers
   
   let fps = 60
+  let sync = 0
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
   return undefined
 
@@ -234,36 +235,33 @@ data Frame = Frame
   , swapchain :: SwapchainKHR
   , graphicsQueue :: Queue
   , presentQueue :: Queue
-  , imageAvailableSemaphore :: Semaphore
-  , renderFinishedSemaphore :: Semaphore
+  , imageAvailableSemaphores :: V.Vector Semaphore
+  , renderFinishedSemaphores :: V.Vector Semaphore
   , commandBuffers :: V.Vector CommandBuffer
+  , sync :: Int
   }
 
 drawFrame :: (MonadIO m) => Frame -> m (Maybe Frame)
 drawFrame x@Frame {..} = do
-  
+  let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
-  liftIO $ print imageIndex
-  if True--imageIndex == 0
-    then do 
-    queueSubmit graphicsQueue
-      [ SomeStruct $ zero
-        { Core10.waitSemaphores = [ imageAvailableSemaphore ]
-        , waitDstStageMask = [ PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ]
-        , commandBuffers = [ commandBufferHandle (commandBuffers V.! fromIntegral imageIndex) ]
-        , signalSemaphores = [ renderFinishedSemaphore ]
-        }
-      ] zero
-    queuePresentKHR presentQueue zero
-      { Swap.waitSemaphores = [ renderFinishedSemaphore ]
-      , swapchains = [ swapchain ]
-      , imageIndices = [ imageIndex ]
+  --liftIO $ print imageIndex
+  queueSubmit graphicsQueue
+    [ SomeStruct $ zero
+      { Core10.waitSemaphores = [ imageAvailableSemaphores ! sync ]
+      , waitDstStageMask = [ PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ]
+      , commandBuffers = [ commandBufferHandle (commandBuffers ! fromIntegral imageIndex) ]
+      , signalSemaphores = [ renderFinishedSemaphores ! sync ]
       }
-    queueWaitIdle presentQueue
-    queueWaitIdle graphicsQueue
-    liftIO $ print "finish frame"
-    else liftIO $ print "skip frame"
-  pure . Just $ x
+    ] zero
+  queuePresentKHR presentQueue zero
+    { Swap.waitSemaphores = [ renderFinishedSemaphores ! sync ]
+    , swapchains = [ swapchain ]
+    , imageIndices = [ imageIndex ]
+    }
+  --queueWaitIdle presentQueue
+  --queueWaitIdle graphicsQueue
+  pure . Just $ x {sync = (sync + 1) `mod` (fromIntegral . length $ commandBuffers)}
 
 type Managed a = forall m . MonadResource m => m a
 
@@ -672,9 +670,9 @@ submitCommand :: Pipeline -> PipelineLayout
               -> (CommandBuffer, Framebuffer)
               -> Managed ()
 submitCommand pipeline pipelineLayout extent renderPass vertexBuffers descriptorSets drawSize (commandBuffer, framebuffer)= do
-  useCommandBuffer commandBuffer zero do
-    -- { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    -- } do
+  useCommandBuffer commandBuffer zero -- do
+    { flags = COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT --COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    } do
     cmdUseRenderPass commandBuffer zero
       { renderPass = renderPass
       , framebuffer = framebuffer
@@ -707,6 +705,19 @@ submitCommand pipeline pipelineLayout extent renderPass vertexBuffers descriptor
         cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
         cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
         cmdDraw commandBuffer (fromIntegral drawSize) 1 0 0
+
+data SyncResource = SyncResource
+  { imageAvailableSemaphores :: V.Vector Semaphore
+  , renderFinishedSemaphores :: V.Vector Semaphore
+  }
+
+withSyncResource :: Device -> V.Vector Framebuffer -> Managed (SyncResource)
+withSyncResource device framebuffers = do
+  imageAvailableSemaphores <- mapM (const makeSemaphore) framebuffers
+  renderFinishedSemaphores <- mapM (const makeSemaphore) framebuffers
+  pure $ SyncResource {..}
+  where
+    makeSemaphore = snd <$> withSemaphore device zero Nothing allocate
 
 memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> Managed ()
 memCopy allocator memAllocation datas = do
