@@ -141,12 +141,7 @@ someFunc = runResourceT $ do
     { queueFamilyIndex = graphicsFamily indices
     , flags = zeroBits
     } Nothing allocate
-  (_, commandBuffers) <- Vulkan.withCommandBuffers device zero
-    { commandPool = commandPool
-    , level = COMMAND_BUFFER_LEVEL_PRIMARY
-    , commandBufferCount = fromIntegral $ length framebuffers
-    } allocate
-  commandBuffer <- return $ commandBuffers ! 0
+  commandBuffers <- Lib.withCommandBuffers device commandPool framebuffers
   
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
@@ -226,46 +221,11 @@ someFunc = runResourceT $ do
       , texelBufferView = []
       }
     ] []
-  useCommandBuffer commandBuffer zero do
-    -- { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    -- } do
-    cmdUseRenderPass commandBuffer zero
-      { renderPass = renderPass
-      , framebuffer = framebuffers ! 0
-      , renderArea = Rect2D
-        { offset = zero
-        , extent = extent
-        }
-      , clearValues = [ Color $ Float32 1 1 1 1 ] -- TODO
-      } SUBPASS_CONTENTS_INLINE do
-        cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
-        let vertexBuffers = [ vertexBuffer ]
-        let offsets = const 0 <$> vertexBuffers
-        let viewports =
-              [ Viewport
-                { x = 0
-                , y = 0
-                , width = 500
-                , height = 500
-                , minDepth = 0
-                , maxDepth = 1
-                }
-              ]
-        let scissors =
-              [ Rect2D
-                { offset = Offset2D 0 0
-                , extent = extent
-                }
-              ]
-        cmdSetViewport commandBuffer 0 viewports
-        cmdSetScissor commandBuffer 0 scissors
-        cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
-        cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
-        cmdDraw commandBuffer (fromIntegral . VS.length $ vertices) 1 0 0
+  mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] descriptorSets (VS.length vertices)) ( V.zip commandBuffers framebuffers)
   (_, imageAvailableSemaphore) <- withSemaphore device zero Nothing allocate
   (_, renderFinishedSemaphore) <- withSemaphore device zero Nothing allocate
   
-  let fps = 1
+  let fps = 60
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
   return undefined
 
@@ -276,7 +236,7 @@ data Frame = Frame
   , presentQueue :: Queue
   , imageAvailableSemaphore :: Semaphore
   , renderFinishedSemaphore :: Semaphore
-  , commandBuffer :: CommandBuffer
+  , commandBuffers :: V.Vector CommandBuffer
   }
 
 drawFrame :: (MonadIO m) => Frame -> m (Maybe Frame)
@@ -290,7 +250,7 @@ drawFrame x@Frame {..} = do
       [ SomeStruct $ zero
         { Core10.waitSemaphores = [ imageAvailableSemaphore ]
         , waitDstStageMask = [ PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ]
-        , commandBuffers = [ commandBufferHandle commandBuffer ]
+        , commandBuffers = [ commandBufferHandle (commandBuffers V.! fromIntegral imageIndex) ]
         , signalSemaphores = [ renderFinishedSemaphore ]
         }
       ] zero
@@ -695,8 +655,58 @@ withPipeline device renderPass ShaderStageInfo {..} = do
   pipeline <- return $ pipelines ! 0
   pure PipelineResource {..}
 
--- withCommandBuffers :: Managed (V.Vector CommandBuffer)
--- withCommandBuffers
+withCommandBuffers :: Device -> CommandPool -> V.Vector Framebuffer -> Managed (V.Vector CommandBuffer)
+withCommandBuffers device commandPool framebuffers = do
+  commandBuffers <- snd <$> Vulkan.withCommandBuffers device zero
+    { commandPool = commandPool
+    , level = COMMAND_BUFFER_LEVEL_PRIMARY
+    , commandBufferCount = fromIntegral . length $ framebuffers
+    } allocate
+  pure commandBuffers
+
+submitCommand :: Pipeline -> PipelineLayout
+              -> "renderArea" ::: Extent2D -> RenderPass
+              -> "vertexBuffers" ::: V.Vector Buffer
+              -> "descriptorSets" ::: V.Vector DescriptorSet
+              -> "drawSize" ::: Int
+              -> (CommandBuffer, Framebuffer)
+              -> Managed ()
+submitCommand pipeline pipelineLayout extent renderPass vertexBuffers descriptorSets drawSize (commandBuffer, framebuffer)= do
+  useCommandBuffer commandBuffer zero do
+    -- { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    -- } do
+    cmdUseRenderPass commandBuffer zero
+      { renderPass = renderPass
+      , framebuffer = framebuffer
+      , renderArea = Rect2D
+        { offset = zero
+        , extent = extent
+        }
+      , clearValues = [ Color $ Float32 1 1 1 1 ] -- TODO
+      } SUBPASS_CONTENTS_INLINE do
+        cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
+        let offsets = const 0 <$> vertexBuffers
+        let viewports =
+              [ Viewport
+                { x = 0
+                , y = 0
+                , width = 500
+                , height = 500
+                , minDepth = 0
+                , maxDepth = 1
+                }
+              ]
+        let scissors =
+              [ Rect2D
+                { offset = Offset2D 0 0
+                , extent = extent
+                }
+              ]
+        cmdSetViewport commandBuffer 0 viewports
+        cmdSetScissor commandBuffer 0 scissors
+        cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
+        cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
+        cmdDraw commandBuffer (fromIntegral drawSize) 1 0 0
 
 memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> Managed ()
 memCopy allocator memAllocation datas = do
