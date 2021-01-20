@@ -101,6 +101,24 @@ promoteTo = \case
   KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -> Just API_VERSION_1_1
   _ -> Nothing
 
+makeRes :: MonadResource m => a -> m a
+makeRes x = do
+  allocate_ (liftIO . pure $ x) (liftIO . print $ "release")
+  pure x
+
+step :: (MonadIO m) => Int -> m (Maybe Int)
+step x = do
+  liftIO . print $ "x is : " <> show x
+  if (x < 10)
+    then pure . Just $ x + 1
+    else pure Nothing
+
+testRes :: IO ()
+testRes = runResourceT $ do
+  res <- makeRes 1
+  let fps = 1
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just $ res
+
 someFunc :: IO ()
 someFunc = runResourceT $ do
   
@@ -123,7 +141,7 @@ someFunc = runResourceT $ do
     { queueFamilyIndex = graphicsFamily indices
     , flags = zeroBits
     } Nothing allocate
-  (_, commandBuffers) <- withCommandBuffers device zero
+  (_, commandBuffers) <- Vulkan.withCommandBuffers device zero
     { commandPool = commandPool
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
     , commandBufferCount = fromIntegral $ length framebuffers
@@ -150,9 +168,9 @@ someFunc = runResourceT $ do
     { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
     } allocate
   let vertices =
-        [ ShaderInputVertex (V2 0 1) (V3 1 1 1)
-        , ShaderInputVertex (V2 (-1) (-1)) (V3 1 1 1)
-        , ShaderInputVertex (V2 1 (-1)) (V3 1 1 1)
+        [ ShaderInputVertex (V2 0 1) (V3 1 0 1)
+        , ShaderInputVertex (V2 (-1) (-1)) (V3 1 0 1)
+        , ShaderInputVertex (V2 1 (-1)) (V3 1 0 1)
         ] :: VS.Vector ShaderInputVertex
   runResourceT $ memCopy allocator vertexBufferMemoryAllocation vertices -- early free
 
@@ -208,9 +226,9 @@ someFunc = runResourceT $ do
       , texelBufferView = []
       }
     ] []
-  useCommandBuffer commandBuffer zero
-    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    } do
+  useCommandBuffer commandBuffer zero do
+    -- { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    -- } do
     cmdUseRenderPass commandBuffer zero
       { renderPass = renderPass
       , framebuffer = framebuffers ! 0
@@ -218,7 +236,7 @@ someFunc = runResourceT $ do
         { offset = zero
         , extent = extent
         }
-      , clearValues = [ Color $ Float32 0 0 0 1 ] -- TODO
+      , clearValues = [ Color $ Float32 1 1 1 1 ] -- TODO
       } SUBPASS_CONTENTS_INLINE do
         cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
         let vertexBuffers = [ vertexBuffer ]
@@ -246,17 +264,46 @@ someFunc = runResourceT $ do
         cmdDraw commandBuffer (fromIntegral . VS.length $ vertices) 1 0 0
   (_, imageAvailableSemaphore) <- withSemaphore device zero Nothing allocate
   (_, renderFinishedSemaphore) <- withSemaphore device zero Nothing allocate
-  (_, imageIndex) <- acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
-  queueSubmit graphicsQueue [] zero
-  queuePresentKHR presentQueue zero
-    { Swap.waitSemaphores = []
-    , swapchains = [ swapchain ]
-    , imageIndices = [ 0 ]
-    }
   
-  let fps = 60
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps $ S.iterateM (maybe (pure Nothing) drawFrame) (pure . Just $ Frame)
+  let fps = 1
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
   return undefined
+
+data Frame = Frame
+  { device :: Device
+  , swapchain :: SwapchainKHR
+  , graphicsQueue :: Queue
+  , presentQueue :: Queue
+  , imageAvailableSemaphore :: Semaphore
+  , renderFinishedSemaphore :: Semaphore
+  , commandBuffer :: CommandBuffer
+  }
+
+drawFrame :: (MonadIO m) => Frame -> m (Maybe Frame)
+drawFrame x@Frame {..} = do
+  
+  imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
+  liftIO $ print imageIndex
+  if True--imageIndex == 0
+    then do 
+    queueSubmit graphicsQueue
+      [ SomeStruct $ zero
+        { Core10.waitSemaphores = [ imageAvailableSemaphore ]
+        , waitDstStageMask = [ PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ]
+        , commandBuffers = [ commandBufferHandle commandBuffer ]
+        , signalSemaphores = [ renderFinishedSemaphore ]
+        }
+      ] zero
+    queuePresentKHR presentQueue zero
+      { Swap.waitSemaphores = [ renderFinishedSemaphore ]
+      , swapchains = [ swapchain ]
+      , imageIndices = [ imageIndex ]
+      }
+    queueWaitIdle presentQueue
+    queueWaitIdle graphicsQueue
+    liftIO $ print "finish frame"
+    else liftIO $ print "skip frame"
+  pure . Just $ x
 
 type Managed a = forall m . MonadResource m => m a
 
@@ -648,6 +695,9 @@ withPipeline device renderPass ShaderStageInfo {..} = do
   pipeline <- return $ pipelines ! 0
   pure PipelineResource {..}
 
+-- withCommandBuffers :: Managed (V.Vector CommandBuffer)
+-- withCommandBuffers
+
 memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> Managed ()
 memCopy allocator memAllocation datas = do
   bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
@@ -659,21 +709,3 @@ memCopyU allocator memAllocation datas = do
   bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
   liftIO $ with datas $ \ptr ->
     copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral . sizeOf $ (undefined :: a)
-
-data Frame = Frame
-  {
-  }
-
-
-type Actor a = a -> (Maybe a)
-
-drawFrame :: Monad m => Frame -> m (Maybe Frame)
-drawFrame x = do
-  --window <- withWindow "test" 500 500
-  pure $ Just x
-
-type Actor' m a = a -> (Maybe a)
--- drawFrame :: Actor Frame
--- drawFrame x = do
---   --window <- return $ withWindow "test" 500 500
---   Just Frame
