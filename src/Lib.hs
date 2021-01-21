@@ -119,6 +119,18 @@ testRes = runResourceT $ do
   let fps = 1
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just $ res
 
+ortho' :: (Num a, Floating a) => a -> a -> a -> a -> a -> a -> [a]
+ortho' left right bottom top near far =
+  [ 2/(right - left), 0, 0, 0
+  , 0, 2/(top - bottom), 0, 0
+  , 0, 0, -2/(far - near), 0
+  , -(right + left)/(right - left), -(top + bottom)/(top - bottom), -(far + near)/(far - near), 1
+  ]
+
+ortho2D :: (Num a, Floating a) => a -> a -> a -> a -> [a]
+ortho2D left right bottom top = ortho' left right bottom top (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
+
+
 someFunc :: IO ()
 someFunc = runResourceT $ do
   
@@ -163,9 +175,9 @@ someFunc = runResourceT $ do
     { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
     } allocate
   let vertices =
-        [ ShaderInputVertex (V2 0 1) (V3 1 0 1)
-        , ShaderInputVertex (V2 (-1) (-1)) (V3 1 0 1)
-        , ShaderInputVertex (V2 1 (-1)) (V3 1 0 1)
+        [ ShaderInputVertex (V2 0 0.5) (V3 1 0 1)
+        , ShaderInputVertex (V2 (-0.5) (-0.5)) (V3 1 0 1)
+        , ShaderInputVertex (V2 0.5 (-0.5)) (V3 1 0 1)
         ] :: VS.Vector ShaderInputVertex
   runResourceT $ memCopy allocator vertexBufferMemoryAllocation vertices -- early free
 
@@ -182,8 +194,8 @@ someFunc = runResourceT $ do
     } allocate
   let uniform = ShaderUniform
         { view = lookAt 0 0 0
-        , proj = ortho 0 500 500 0 0 0
-        , model = mkTransformation (axisAngle (V3 1 1 0) 90) (V3 0 1 0) !*! scaled 0.5
+        , proj = ortho 0 500 500 0 0 1
+        , model = mkTransformation (axisAngle (V3 1 1 0) 0) (V3 0 0 0) !*! scaled 1
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
   descriptorPool <- snd <$> withDescriptorPool device zero
@@ -224,7 +236,7 @@ someFunc = runResourceT $ do
   mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] descriptorSets (VS.length vertices)) ( V.zip commandBuffers framebuffers)
 
   SyncResource {..} <- withSyncResource device framebuffers
-  
+
   let fps = 60
   let sync = 0
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
@@ -254,7 +266,7 @@ drawFrame x@Frame {..} = do
       , signalSemaphores = [ renderFinishedSemaphores ! sync ]
       }
     ] zero
-  queuePresentKHR presentQueue zero
+  _ <- queuePresentKHR presentQueue zero
     { Swap.waitSemaphores = [ renderFinishedSemaphores ! sync ]
     , swapchains = [ swapchain ]
     , imageIndices = [ imageIndex ]
@@ -451,16 +463,6 @@ withImageView device surfaceFormat img =
        , layerCount = 1
        }
      } Nothing allocate
-
-findMemoryType :: MonadIO m => PhysicalDevice -> "memoryTypeBits" ::: Word -> MemoryPropertyFlagBits -> m Word
-findMemoryType pdevice typeFilter flagBits = do
-  memProps <- getPhysicalDeviceMemoryProperties pdevice
-  count <- return $ memoryTypeCount memProps
-  memTypes <- return $ memoryTypes memProps
-  return . fromIntegral $ tryWithE (VulkanAllocateMemoryException "can't allocate video memory") (V.findIndex matchp (V.indexed $ V.take (fromIntegral count) memTypes))
-  where
-    matchp :: (Int, MemoryType) -> Bool
-    matchp (i, e) = typeFilter .&. (1 `shift` (fromIntegral i)) /= zeroBits && (propertyFlags e) .&. flagBits == flagBits
 
 data ShaderStageInfo = ShaderStageInfo
   { shaderStages :: V.Vector (SomeStruct PipelineShaderStageCreateInfo)
@@ -669,7 +671,7 @@ submitCommand :: Pipeline -> PipelineLayout
               -> "drawSize" ::: Int
               -> (CommandBuffer, Framebuffer)
               -> Managed ()
-submitCommand pipeline pipelineLayout extent renderPass vertexBuffers descriptorSets drawSize (commandBuffer, framebuffer)= do
+submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuffers descriptorSets drawSize (commandBuffer, framebuffer)= do
   useCommandBuffer commandBuffer zero -- do
     { flags = COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT --COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
     } do
@@ -680,7 +682,7 @@ submitCommand pipeline pipelineLayout extent renderPass vertexBuffers descriptor
         { offset = zero
         , extent = extent
         }
-      , clearValues = [ Color $ Float32 1 1 1 1 ] -- TODO
+      , clearValues = [ Color $ Float32 1 1 1 1 ]
       } SUBPASS_CONTENTS_INLINE do
         cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
         let offsets = const 0 <$> vertexBuffers
@@ -688,8 +690,8 @@ submitCommand pipeline pipelineLayout extent renderPass vertexBuffers descriptor
               [ Viewport
                 { x = 0
                 , y = 0
-                , width = 500
-                , height = 500
+                , width = fromIntegral width
+                , height = fromIntegral height
                 , minDepth = 0
                 , maxDepth = 1
                 }
