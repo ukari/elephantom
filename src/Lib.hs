@@ -139,18 +139,18 @@ someFunc = runResourceT $ do
   inst <- withInst window
   surf <- withSurface inst window
   phys <- getPhysicalDevice inst
-  indices <- findQueueFamilyIndices phys surf
-  liftIO $ print indices
-  let queueFamilyIndices = uniq $ modify sort (fmap ($ indices) [graphicsFamily , presentFamily])
+  qIndices <- findQueueFamilyIndices phys surf
+  liftIO $ print qIndices
+  let queueFamilyIndices = uniq $ modify sort (fmap ($ qIndices) [graphicsFamily , presentFamily])
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
-  graphicsQueue <- getDeviceQueue device (graphicsFamily indices) 0
-  presentQueue <- getDeviceQueue device (presentFamily indices) 0
+  graphicsQueue <- getDeviceQueue device (graphicsFamily qIndices) 0
+  presentQueue <- getDeviceQueue device (presentFamily qIndices) 0
   SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
   PipelineResource {..} <- Lib.withPipeline device renderPass shaderStageInfo
   (_, commandPool) <- withCommandPool device zero
-    { queueFamilyIndex = graphicsFamily indices
+    { queueFamilyIndex = graphicsFamily qIndices
     , flags = zeroBits
     } Nothing allocate
   commandBuffers <- Lib.withCommandBuffers device commandPool framebuffers
@@ -180,6 +180,19 @@ someFunc = runResourceT $ do
         , ShaderInputVertex (V2 0.5 (-0.5)) (V3 1 0 1)
         ] :: VS.Vector ShaderInputVertex
   runResourceT $ memCopy allocator vertexBufferMemoryAllocation vertices -- early free
+
+  let indices = [0, 1, 2] :: VS.Vector Int
+  (indexBuffer, indexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
+    { size = fromIntegral $ sizeOf (indices VS.! 0) * VS.length indices
+    , usage = BUFFER_USAGE_INDEX_BUFFER_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero {
+      Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--Vma.MEMORY_USAGE_GPU_ONLY
+    } allocate
+  (indexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator indexBuffer zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--Vma.MEMORY_USAGE_CPU_ONLY
+    } allocate
+  runResourceT $ memCopy allocator indexBufferMemoryAllocation indices
 
   (uniformBuffer, uniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
@@ -233,13 +246,13 @@ someFunc = runResourceT $ do
       , texelBufferView = []
       }
     ] []
-  mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] descriptorSets (VS.length vertices)) ( V.zip commandBuffers framebuffers)
+  mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] indexBuffer descriptorSets (VS.length vertices)) (V.zip commandBuffers framebuffers)
 
   SyncResource {..} <- withSyncResource device framebuffers
 
   let fps = 60
   let sync = 0
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
   return undefined
 
 data Frame = Frame
@@ -271,8 +284,8 @@ drawFrame x@Frame {..} = do
     , swapchains = [ swapchain ]
     , imageIndices = [ imageIndex ]
     }
-  --queueWaitIdle presentQueue
-  --queueWaitIdle graphicsQueue
+  queueWaitIdle presentQueue
+  queueWaitIdle graphicsQueue
   pure . Just $ x {sync = (sync + 1) `mod` (fromIntegral . length $ commandBuffers)}
 
 type Managed a = forall m . MonadResource m => m a
@@ -487,10 +500,29 @@ withShaderStages device = do
 
   layout(location = 0) out vec3 fragColor;
 
+  vec2 positions[3] = vec2[](
+    vec2(0.0, -0.5),
+    vec2(0.5, 0.5),
+    vec2(-0.5, 0.5)
+  );
+
+  vec3 colors[3] = vec3[](
+    vec3(1.0, 0.0, 0.0),
+    vec3(0.0, 1.0, 0.0),
+    vec3(0.0, 0.0, 1.0)
+  );
+
+  //void main() {
+    //gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
+    //gl_Position = vec4(inPosition, 0.0, 1.0);
+    //fragColor = inColor;
+  //}
+  
   void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
-    fragColor = inColor;
+    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    fragColor = colors[gl_VertexIndex];
   }
+
   |]
   fragCode <- return [frag|
   #version 450
@@ -667,11 +699,12 @@ withCommandBuffers device commandPool framebuffers = do
 submitCommand :: Pipeline -> PipelineLayout
               -> "renderArea" ::: Extent2D -> RenderPass
               -> "vertexBuffers" ::: V.Vector Buffer
+              -> "indexBuffer" ::: Buffer
               -> "descriptorSets" ::: V.Vector DescriptorSet
               -> "drawSize" ::: Int
               -> (CommandBuffer, Framebuffer)
               -> Managed ()
-submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuffers descriptorSets drawSize (commandBuffer, framebuffer)= do
+submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuffers indexBuffer descriptorSets drawSize (commandBuffer, framebuffer) = do
   useCommandBuffer commandBuffer zero -- do
     { flags = COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT --COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
     } do
@@ -704,9 +737,11 @@ submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuff
               ]
         cmdSetViewport commandBuffer 0 viewports
         cmdSetScissor commandBuffer 0 scissors
-        cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
-        cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
-        cmdDraw commandBuffer (fromIntegral drawSize) 1 0 0
+        -- cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
+        -- cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT16
+        -- cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
+        -- cmdDrawIndexed commandBuffer (3) 1 0 0 0
+        cmdDraw commandBuffer 3 1 0 0
 
 data SyncResource = SyncResource
   { imageAvailableSemaphores :: V.Vector Semaphore
