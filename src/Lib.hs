@@ -45,7 +45,7 @@ import Foreign.Storable (Storable (sizeOf, alignment))
 import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
-import Foreign.Marshal.Utils (copyBytes, with)
+import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
 import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), lookAt, ortho, mkTransformation, axisAngle, scaled)
 
 import qualified Linear as Linear
@@ -169,17 +169,18 @@ someFunc = runResourceT $ do
     , sharingMode = SHARING_MODE_EXCLUSIVE -- chooseSharingMode queueFamilyIndices
     -- , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--GPU_ONLY
     } allocate
-  (vertexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator vertexBuffer zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
-    } allocate
+  -- (vertexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator vertexBuffer zero
+  --   { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
+  --   } allocate
   let vertices =
-        [ ShaderInputVertex (V2 0 0.5) (V3 1 0 1)
-        , ShaderInputVertex (V2 (-0.5) (-0.5)) (V3 1 0 1)
-        , ShaderInputVertex (V2 0.5 (-0.5)) (V3 1 0 1)
+        [ ShaderInputVertex (V2 0 0.5) (V3 (102/255) (53/255) (53/255))
+        , ShaderInputVertex (V2 (-0.5) (-0.5)) (V3 (53/255) (53/255) (102/255))
+        , ShaderInputVertex (V2 0.5 (-0.5)) (V3 (53/255) (102/255) (53/255))
         ] :: VS.Vector ShaderInputVertex
-  runResourceT $ memCopy allocator vertexBufferMemoryAllocation vertices -- early free
+  --Vma.bindBufferMemory allocator vertexBufferMemoryAllocation vertexBuffer
+  runResourceT $ memCopy allocator vertexBufferAllocation vertices -- early free
 
   let indices = [0, 1, 2] :: VS.Vector Int
   (indexBuffer, indexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
@@ -192,6 +193,7 @@ someFunc = runResourceT $ do
   (indexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator indexBuffer zero
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--Vma.MEMORY_USAGE_CPU_ONLY
     } allocate
+  --Vma.bindBufferMemory allocator indexBufferMemoryAllocation indexBuffer
   runResourceT $ memCopy allocator indexBufferMemoryAllocation indices
 
   (uniformBuffer, uniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
@@ -202,7 +204,7 @@ someFunc = runResourceT $ do
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  (uniformBufferAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator uniformBuffer zero
+  (uniformBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator uniformBuffer zero
     { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
     } allocate
   let uniform = ShaderUniform
@@ -210,7 +212,8 @@ someFunc = runResourceT $ do
         , proj = ortho 0 500 500 0 0 1
         , model = mkTransformation (axisAngle (V3 1 1 0) 0) (V3 0 0 0) !*! scaled 1
         }
-  runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
+  --Vma.bindBufferMemory allocator uniformBufferMemoryAllocation uniformBuffer
+  runResourceT $ memCopyU allocator uniformBufferMemoryAllocation uniform -- early free
   descriptorPool <- snd <$> withDescriptorPool device zero
     { poolSizes =
         [ zero
@@ -500,27 +503,10 @@ withShaderStages device = do
 
   layout(location = 0) out vec3 fragColor;
 
-  vec2 positions[3] = vec2[](
-    vec2(0.0, -0.5),
-    vec2(0.5, 0.5),
-    vec2(-0.5, 0.5)
-  );
-
-  vec3 colors[3] = vec3[](
-    vec3(1.0, 0.0, 0.0),
-    vec3(0.0, 1.0, 0.0),
-    vec3(0.0, 0.0, 1.0)
-  );
-
-  //void main() {
-    //gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
-    //gl_Position = vec4(inPosition, 0.0, 1.0);
-    //fragColor = inColor;
-  //}
-  
   void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    fragColor = colors[gl_VertexIndex];
+    //gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
+    gl_Position = vec4(inPosition, 0.0, 1.0);
+    fragColor = inColor;
   }
 
   |]
@@ -737,7 +723,7 @@ submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuff
               ]
         cmdSetViewport commandBuffer 0 viewports
         cmdSetScissor commandBuffer 0 scissors
-        -- cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
+        cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
         -- cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT16
         -- cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
         -- cmdDrawIndexed commandBuffer (3) 1 0 0 0
