@@ -171,18 +171,14 @@ someFunc = runResourceT $ do
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--GPU_ONLY
     } allocate
-  -- (vertexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator vertexBuffer zero
-  --   { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
-  --   } allocate
   let vertices =
         [ ShaderInputVertex (V2 0 0.5) (V3 (102/255) (53/255) (53/255))
         , ShaderInputVertex (V2 (-0.5) (-0.5)) (V3 (53/255) (53/255) (102/255))
         , ShaderInputVertex (V2 0.5 (-0.5)) (V3 (53/255) (102/255) (53/255))
         ] :: VS.Vector ShaderInputVertex
-  --Vma.bindBufferMemory allocator vertexBufferMemoryAllocation vertexBuffer
   runResourceT $ memCopy allocator vertexBufferAllocation vertices -- early free
 
-  let indices = [0, 1, 2] :: VS.Vector Int
+  let indices = [0, 1, 2] :: VS.Vector Word32
   (indexBuffer, indexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ sizeOf (indices VS.! 0) * VS.length indices
     , usage = BUFFER_USAGE_INDEX_BUFFER_BIT
@@ -190,11 +186,7 @@ someFunc = runResourceT $ do
     } zero {
       Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  (indexBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator indexBuffer zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--Vma.MEMORY_USAGE_CPU_ONLY
-    } allocate
-  --Vma.bindBufferMemory allocator indexBufferMemoryAllocation indexBuffer
-  runResourceT $ memCopy allocator indexBufferMemoryAllocation indices
+  runResourceT $ memCopy allocator indexBufferAllocation indices
 
   (uniformBuffer, uniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
@@ -202,18 +194,14 @@ someFunc = runResourceT $ do
     , sharingMode = chooseSharingMode queueFamilyIndices
     , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
-    } allocate
-  (uniformBufferMemoryAllocation, _) <- snd <$> Vma.withMemoryForBuffer allocator uniformBuffer zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU --GPU_ONLY
     } allocate
   let uniform = ShaderUniform
         { view = lookAt 0 0 0
         , proj = ortho 0 500 500 0 0 1
         , model = mkTransformation (axisAngle (V3 1 1 0) 0) (V3 0 0 0) !*! scaled 1
         }
-  --Vma.bindBufferMemory allocator uniformBufferMemoryAllocation uniformBuffer
-  runResourceT $ memCopyU allocator uniformBufferMemoryAllocation uniform -- early free
+  runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
   descriptorPool <- snd <$> withDescriptorPool device zero
     { poolSizes =
         [ zero
@@ -724,10 +712,10 @@ submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuff
         cmdSetViewport commandBuffer 0 viewports
         cmdSetScissor commandBuffer 0 scissors
         cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
-        -- cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT16
-        -- cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
-        -- cmdDrawIndexed commandBuffer (3) 1 0 0 0
-        cmdDraw commandBuffer 3 1 0 0
+        cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
+        cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
+        cmdDrawIndexed commandBuffer (3) 1 0 0 0
+        --cmdDraw commandBuffer 3 1 0 0
 
 data SyncResource = SyncResource
   { imageAvailableSemaphores :: V.Vector Semaphore
