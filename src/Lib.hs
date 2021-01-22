@@ -36,6 +36,9 @@ import Vulkan.Utils.Initialization
 --import Vulkan.Utils.QueueAssignment
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
+import Codec.Picture( PixelRGBA8( .. ), writePng )
+import qualified Graphics.Rasterific as Draw
+--import Graphics.Rasterific.Texture
 
 import Language.Haskell.TH hiding (location)
 import Type.Reflection (SomeTypeRep, splitApps, typeOf)
@@ -46,7 +49,7 @@ import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
-import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), lookAt, ortho, mkTransformation, axisAngle, scaled)
+import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, scaled)
 
 import qualified Linear as Linear
 import Data.String (IsString)
@@ -78,6 +81,7 @@ import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw)
+import Control.Concurrent (forkIO, forkOS)
 
 import Shader
 import Offset
@@ -119,15 +123,15 @@ testRes = runResourceT $ do
   let fps = 1
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just $ res
 
-ortho' :: (Num a, Floating a) => a -> a -> a -> a -> a -> a -> [a]
-ortho' left right bottom top near far =
-  [ 2/(right - left), 0, 0, 0
-  , 0, 2/(top - bottom), 0, 0
-  , 0, 0, -2/(far - near), 0
-  , -(right + left)/(right - left), -(top + bottom)/(top - bottom), -(far + near)/(far - near), 1
-  ]
+ortho' :: (Num a, Floating a) => a -> a -> a -> a -> a -> a -> M44 a
+ortho' left right bottom top near far = V4
+  (V4 (2/(right - left)) 0 0 (-(right + left)/(right - left)))
+  (V4 0 (2/(top - bottom)) 0 (-(top + bottom)/(top - bottom)))
+  (V4 0 0 (-2/(far - near)) (-(far + near)/(far - near)))
+  (V4 0 0 0 1)
+  
 
-ortho2D :: (Num a, Floating a) => a -> a -> a -> a -> [a]
+ortho2D :: (Num a, Floating a) => a -> a -> a -> a -> M44 a
 ortho2D left right bottom top = ortho' left right bottom top (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
 
 
@@ -172,9 +176,9 @@ someFunc = runResourceT $ do
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--GPU_ONLY
     } allocate
   let vertices =
-        [ ShaderInputVertex (V2 0 0.5) (V3 (102/255) (53/255) (53/255))
-        , ShaderInputVertex (V2 (-0.5) (-0.5)) (V3 (53/255) (53/255) (102/255))
-        , ShaderInputVertex (V2 0.5 (-0.5)) (V3 (53/255) (102/255) (53/255))
+        [ ShaderInputVertex (V2 0 125) (V3 (102/255) (53/255) (53/255))
+        , ShaderInputVertex (V2 (-125) (-125)) (V3 (53/255) (53/255) (102/255))
+        , ShaderInputVertex (V2 125 (-125)) (V3 (53/255) (102/255) (53/255))
         ] :: VS.Vector ShaderInputVertex
   runResourceT $ memCopy allocator vertexBufferAllocation vertices -- early free
 
@@ -197,9 +201,9 @@ someFunc = runResourceT $ do
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU --GPU_ONLY
     } allocate
   let uniform = ShaderUniform
-        { view = lookAt 0 0 0
-        , proj = ortho 0 500 500 0 0 1
-        , model = mkTransformation (axisAngle (V3 1 1 0) 0) (V3 0 0 0) !*! scaled 1
+        { view = identity -- lookAt 0 0 (V3 0 0 (-1))
+        , proj = ortho (-500/2) (500/2) (-500/2) (500/2) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
+        , model = identity -- mkTransformation (axisAngle (V3 1 1 0) 0) (V3 0 0 0) !*! scaled 1
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
   descriptorPool <- snd <$> withDescriptorPool device zero
@@ -493,7 +497,7 @@ withShaderStages device = do
 
   void main() {
     //gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
-    gl_Position = vec4(inPosition, 0.0, 1.0);
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
     fragColor = inColor;
   }
 
