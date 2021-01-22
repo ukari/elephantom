@@ -49,7 +49,7 @@ import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
-import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, scaled)
+import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, scaled)
 
 import qualified Linear as Linear
 import Data.String (IsString)
@@ -176,9 +176,9 @@ someFunc = runResourceT $ do
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--GPU_ONLY
     } allocate
   let vertices =
-        [ ShaderInputVertex (V2 0 125) (V3 (102/255) (53/255) (53/255))
-        , ShaderInputVertex (V2 (-125) (-125)) (V3 (53/255) (53/255) (102/255))
-        , ShaderInputVertex (V2 125 (-125)) (V3 (53/255) (102/255) (53/255))
+        [ ShaderInputVertex (V2 250 125) (V3 (102/255) (53/255) (53/255))
+        , ShaderInputVertex (V2 (125) (375)) (V3 (53/255) (53/255) (102/255))
+        , ShaderInputVertex (V2 375 (375)) (V3 (53/255) (102/255) (53/255))
         ] :: VS.Vector ShaderInputVertex
   runResourceT $ memCopy allocator vertexBufferAllocation vertices -- early free
 
@@ -202,7 +202,7 @@ someFunc = runResourceT $ do
     } allocate
   let uniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1))
-        , proj = ortho (-500/2) (500/2) (-500/2) (500/2) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
+        , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
         , model = identity -- mkTransformation (axisAngle (V3 1 1 0) 0) (V3 0 0 0) !*! scaled 1
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
