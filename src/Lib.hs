@@ -49,7 +49,7 @@ import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
-import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, scaled)
+import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), Epsilon, transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, m33_to_m44, scaled)
 
 import qualified Linear as Linear
 import Data.String (IsString)
@@ -134,6 +134,8 @@ ortho' left right bottom top near far = V4
 ortho2D :: (Num a, Floating a) => a -> a -> a -> a -> M44 a
 ortho2D left right bottom top = ortho' left right bottom top (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
 
+rotateAt :: (Num a, Epsilon a, Floating a) => V3 a -> Quaternion a -> M44 a
+rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y)) (0+(z))) !*! mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 (-x) (-y) (-z))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
@@ -203,7 +205,7 @@ someFunc = runResourceT $ do
   let uniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1))
         , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
-        , model = identity -- mkTransformation (axisAngle (V3 1 1 0) 0) (V3 0 0 0) !*! scaled 1
+        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
   descriptorPool <- snd <$> withDescriptorPool device zero
@@ -496,7 +498,6 @@ withShaderStages device = do
   layout(location = 0) out vec3 fragColor;
 
   void main() {
-    //gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
     fragColor = inColor;
   }
