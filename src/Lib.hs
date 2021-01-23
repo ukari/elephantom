@@ -37,7 +37,7 @@ import Vulkan.Utils.Initialization
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
 import Codec.Picture( PixelRGBA8( .. ), writePng )
-import qualified Graphics.Rasterific as Draw
+import Graphics.Rasterific
 --import Graphics.Rasterific.Texture
 
 import Language.Haskell.TH hiding (location)
@@ -244,6 +244,8 @@ someFunc = runResourceT $ do
       }
     ] []
   mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] indexBuffer descriptorSets (VS.length vertices)) (V.zip commandBuffers framebuffers)
+
+  
 
   SyncResource {..} <- withSyncResource device framebuffers
 
