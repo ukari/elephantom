@@ -203,7 +203,7 @@ someFunc = runResourceT $ do
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU --GPU_ONLY
     } allocate
   let uniform = ShaderUniform
-        { view = identity -- lookAt 0 0 (V3 0 0 (-1))
+        { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
         , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
