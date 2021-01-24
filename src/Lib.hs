@@ -700,7 +700,7 @@ withPipeline device renderPass ShaderStageInfo {..} = do
         , rasterizerDiscardEnable = False
         , lineWidth = 1
         , polygonMode = POLYGON_MODE_FILL
-        , cullMode = CULL_MODE_NONE -- NOTE for 2D pipeline, no cull mode. while for 3D pipeline, needs set CULL_MODE_BACK_BIT
+        , cullMode = CULL_MODE_NONE -- NOTE: for 2D pipeline, no cull mode. while for 3D pipeline, needs set CULL_MODE_BACK_BIT
         , frontFace = FRONT_FACE_CLOCKWISE
         , depthBiasEnable = False
         }
