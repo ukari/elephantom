@@ -36,7 +36,7 @@ import Vulkan.Utils.Initialization
 --import Vulkan.Utils.QueueAssignment
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
-import Codec.Picture( PixelRGBA8( .. ), writePng )
+import Codec.Picture(PixelRGBA8( .. ), readImage, imageData)
 import Graphics.Rasterific
 --import Graphics.Rasterific.Texture
 
@@ -145,9 +145,10 @@ someFunc = runResourceT $ do
   inst <- withInst window
   surf <- withSurface inst window
   phys <- getPhysicalDevice inst
+  liftIO . print =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
   liftIO $ print qIndices
-  let queueFamilyIndices = uniq $ modify sort (fmap ($ qIndices) [graphicsFamily , presentFamily])
+  let queueFamilyIndices = uniq . modify sort $ fmap ($ qIndices) [graphicsFamily, presentFamily]
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
   graphicsQueue <- getDeviceQueue device (graphicsFamily qIndices) 0
@@ -179,8 +180,8 @@ someFunc = runResourceT $ do
     } allocate
   let vertices =
         [ ShaderInputVertex (V2 250 125) (V3 (102/255) (53/255) (53/255))
-        , ShaderInputVertex (V2 (125) (375)) (V3 (53/255) (53/255) (102/255))
         , ShaderInputVertex (V2 375 (375)) (V3 (53/255) (102/255) (53/255))
+        , ShaderInputVertex (V2 (125) (375)) (V3 (53/255) (53/255) (102/255))
         ] :: VS.Vector ShaderInputVertex
   runResourceT $ memCopy allocator vertexBufferAllocation vertices -- early free
 
@@ -245,7 +246,10 @@ someFunc = runResourceT $ do
     ] []
   mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] indexBuffer descriptorSets (VS.length vertices)) (V.zip commandBuffers framebuffers)
 
-  
+  --textureShaderStages <- Lib.withTextureShaderStages device
+  --texturePipeline <- Lib.withPipeline device renderPass textureShaderStages
+
+  let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
 
   SyncResource {..} <- withSyncResource device framebuffers
 
@@ -571,6 +575,64 @@ withShaderStages device = do
         }
   pure ShaderStageInfo {..}
 
+withTextureShaderStages :: Device -> Managed ShaderStageInfo
+withTextureShaderStages device = do
+  vertCode <- return [vert|
+  #version 450
+  #extension GL_ARB_separate_shader_objects : enable
+
+  layout(binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+  } ubo;
+
+  layout(location = 0) in vec2 inPosition;
+  layout(location = 1) in vec3 inColor;
+  layout(location = 2) in vec2 inTexCoord;
+
+  layout(location = 0) out vec3 fragColor;
+  layout(location = 1) out vec2 fragTexCoord;
+
+  void main() {
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
+    fragColor = inColor;
+    fragTexCoord = inTexCoord;
+  }
+  |]
+  fragCode <- return [frag|
+  #version 450
+
+  #extension GL_ARB_separate_shader_objects : enable
+
+  layout(binding = 1) uniform sampler2D texSampler;
+
+  layout(location = 0) in vec3 fragColor;
+  layout(location = 1) in vec2 fragTexCoord;
+
+  layout(location = 0) out vec4 outColor;
+
+  void main() {
+    outColor = texture(texSampler, fragTexCoord); // for image use texSampler, for shape created by rasterfic use fragColor
+  }
+  |]
+  (_, vertShaderStage) <- withShaderModule device zero { code = vertCode } Nothing allocate
+  (_, fragShaderStage) <- withShaderModule device zero { code = fragCode } Nothing allocate
+  shaderStages <- pure
+    [ SomeStruct $ zero
+      { stage = SHADER_STAGE_VERTEX_BIT
+      , module' = vertShaderStage
+      , name = "main"
+      }
+    , SomeStruct $ zero
+      { stage = SHADER_STAGE_FRAGMENT_BIT
+      , module' = fragShaderStage
+      , name = "main"
+      }
+    ]
+  
+  pure ShaderStageInfo {..}
+
 withDescriptorSetLayout :: Device -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetLayout
 withDescriptorSetLayout device descriptorSetLayoutCreateInfo =
   snd <$> Vulkan.withDescriptorSetLayout device descriptorSetLayoutCreateInfo Nothing allocate
@@ -638,7 +700,7 @@ withPipeline device renderPass ShaderStageInfo {..} = do
         , rasterizerDiscardEnable = False
         , lineWidth = 1
         , polygonMode = POLYGON_MODE_FILL
-        , cullMode = CULL_MODE_NONE
+        , cullMode = CULL_MODE_NONE -- NOTE for 2D pipeline, no cull mode. while for 3D pipeline, needs set CULL_MODE_BACK_BIT
         , frontFace = FRONT_FACE_CLOCKWISE
         , depthBiasEnable = False
         }
