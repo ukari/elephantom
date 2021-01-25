@@ -209,11 +209,14 @@ someFunc = runResourceT $ do
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
+  -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
+  -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
+  -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
   descriptorPool <- snd <$> withDescriptorPool device zero
     { poolSizes =
         [ zero
           { type' = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-          , descriptorCount = fromIntegral . length $ images
+          , descriptorCount = 1
           }
         ]
     , maxSets = fromIntegral . length $ images
