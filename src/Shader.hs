@@ -5,6 +5,7 @@
 module Shader
   ( ShaderUniform (..)
   , ShaderInputVertex (..)
+  , Texture (..)
   )
   where
 
@@ -28,3 +29,11 @@ data ShaderUniform = ShaderUniform
   } deriving (Generic, GStorable)
 
 makeOffset ''ShaderUniform
+
+data Texture = Texture
+  { position :: !(V2 Float)
+  , color :: !(V3 Float)
+  , texCoord :: !(V2 Float)
+  } deriving (Generic, GStorable)
+
+makeOffset ''Texture

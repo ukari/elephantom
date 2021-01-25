@@ -37,7 +37,7 @@ import Vulkan.Utils.Initialization
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
 import Codec.Picture(PixelRGBA8( .. ), readImage, imageData)
-import Graphics.Rasterific
+import Graphics.Rasterific (renderDrawing, rectangle, fill)
 --import Graphics.Rasterific.Texture
 
 import Language.Haskell.TH hiding (location)
@@ -67,6 +67,7 @@ import Data.Vector.Algorithms.Intro as V
 --import Data.Set (Set, union)
 --import qualified Data.Set as Set
 import Data.Maybe (fromMaybe, isNothing, isJust)
+import Data.Bool (bool)
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
@@ -145,7 +146,7 @@ someFunc = runResourceT $ do
   inst <- withInst window
   surf <- withSurface inst window
   phys <- getPhysicalDevice inst
-  liftIO . print =<< getPhysicalDeviceProperties phys
+  --liftIO . print =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
   liftIO $ print qIndices
   let queueFamilyIndices = uniq . modify sort $ fmap ($ qIndices) [graphicsFamily, presentFamily]
@@ -249,10 +250,17 @@ someFunc = runResourceT $ do
     ] []
   mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] indexBuffer descriptorSets (VS.length vertices)) (V.zip commandBuffers framebuffers)
 
-  --textureShaderStages <- Lib.withTextureShaderStages device
-  --texturePipeline <- Lib.withPipeline device renderPass textureShaderStages
-
+  textureSampler <- withTextureSampler phys device
+  textureShaderStages <- Lib.withTextureShaderStages device
+  texturePipeline <- Lib.withPipeline device renderPass textureShaderStages
+  let texCoords =
+        [ Texture (V2 50 50) (V3 0 0 0) (V2 0 0)
+        , Texture (V2 250 50) (V3 0 0 0) (V2 0 1)
+        , Texture (V2 250 150) (V3 0 0 0) (V2 1 1)
+        , Texture (V2 50 150) (V3 0 0 0) (V2 0 1)
+        ] :: VS.Vector Texture
   let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
+  
 
   SyncResource {..} <- withSyncResource device framebuffers
 
@@ -397,6 +405,13 @@ withDevice phys indices = do
         , KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -- vma use it automatically, promoted to API_VERSION_1_1
         , KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -- dependency of KHR_DEDICATED_ALLOCATION_EXTENSION_NAME, promoted to API_VERSION_1_1
         ]
+  let optionalFeatures =
+        [ RequireDeviceFeature
+          { featureName   = "samplerAnisotropy"
+          , checkFeature  = samplerAnisotropy :: PhysicalDeviceFeatures -> Bool
+          , enableFeature = \f -> f { samplerAnisotropy = True } :: PhysicalDeviceFeatures
+          }
+        ]
   let deviceCreateInfo :: DeviceCreateInfo '[]
       deviceCreateInfo = zero
         { queueCreateInfos = V.fromList
@@ -409,7 +424,7 @@ withDevice phys indices = do
         -- , enabledLayerNames = []
         -- , enabledExtensionNames = extensions <> optionals
         }
-  createDeviceFromRequirements (require extensions) (require optionals) phys deviceCreateInfo
+  createDeviceFromRequirements (require extensions) ((require optionals) <> optionalFeatures) phys deviceCreateInfo
   where
     require :: "extensions" ::: [ByteString] -> [DeviceRequirement]
     require = map (flip (RequireDeviceExtension Nothing) minBound) . promote
@@ -548,8 +563,10 @@ withShaderStages device = do
               , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
               , descriptorCount = 1
               , stageFlags = SHADER_STAGE_VERTEX_BIT
-              } ]
-          } ]
+              }
+            ]
+          }
+        ]
   descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
   -- https://vulkan-tutorial.com/Vertex_buffers/Vertex_input_description
   let vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
@@ -590,17 +607,17 @@ withTextureShaderStages device = do
     mat4 proj;
   } ubo;
 
-  layout(location = 0) in vec2 inPosition;
-  layout(location = 1) in vec3 inColor;
-  layout(location = 2) in vec2 inTexCoord;
+  layout(location = 0) in vec2 position;
+  layout(location = 1) in vec3 color;
+  layout(location = 2) in vec2 texCoord;
 
   layout(location = 0) out vec3 fragColor;
   layout(location = 1) out vec2 fragTexCoord;
 
   void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
-    fragColor = inColor;
-    fragTexCoord = inTexCoord;
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 0.0, 1.0);
+    fragColor = color;
+    fragTexCoord = texCoord;
   }
   |]
   fragCode <- return [frag|
@@ -633,7 +650,56 @@ withTextureShaderStages device = do
       , name = "main"
       }
     ]
-  
+  let descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
+      descriptorSetLayoutCreateInfos =
+        [ zero
+          { bindings =
+            [ zero
+              { binding = 0
+              , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+              , descriptorCount = 1
+              , stageFlags = SHADER_STAGE_VERTEX_BIT
+              }
+            , zero
+              { binding = 1
+              , descriptorType = DESCRIPTOR_TYPE_SAMPLER
+              , descriptorCount = 1
+              , stageFlags = SHADER_STAGE_FRAGMENT_BIT
+              }
+            ]
+          }
+        ]
+  descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
+  let vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
+      vertexInputState = Just $ SomeStruct $ zero
+        { vertexBindingDescriptions =
+          [ zero
+            { binding = 0
+            , stride = fromIntegral . sizeOf $ (undefined :: Texture)
+            , inputRate = VERTEX_INPUT_RATE_VERTEX
+            }
+          ]
+        , vertexAttributeDescriptions =
+          [ zero
+            { binding = 0
+            , location = 0
+            , offset = offsetof (undefined :: Texture) ("position" :: String)
+            , format = FORMAT_R32G32_SFLOAT
+            }
+          , zero
+            { binding = 0
+            , location = 1
+            , offset = offsetof (undefined :: Texture) ("color" :: String)
+            , format = FORMAT_R32G32B32_SFLOAT
+            }
+          , zero
+            { binding = 0
+            , location = 2
+            , offset = offsetof (undefined :: Texture) ("texCoord" :: String)
+            , format = FORMAT_R32G32B32_SFLOAT
+            }
+          ]
+        }
   pure ShaderStageInfo {..}
 
 withDescriptorSetLayout :: Device -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetLayout
@@ -732,6 +798,28 @@ withPipeline device renderPass ShaderStageInfo {..} = do
       } ] Nothing allocate
   pipeline <- return $ pipelines ! 0
   pure PipelineResource {..}
+
+withTextureSampler :: PhysicalDevice -> Device -> Managed Sampler
+withTextureSampler phys device = do
+  supportAnisotropy <- samplerAnisotropy <$> getPhysicalDeviceFeatures phys
+  maxAnisotropy <- maxSamplerAnisotropy . limits <$> getPhysicalDeviceProperties phys
+  snd <$> withSampler device zero
+    { magFilter = FILTER_LINEAR
+    , minFilter = FILTER_LINEAR
+    , addressModeU = SAMPLER_ADDRESS_MODE_REPEAT -- SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
+    , addressModeV = SAMPLER_ADDRESS_MODE_REPEAT -- SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
+    , addressModeW = SAMPLER_ADDRESS_MODE_REPEAT -- SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
+    , anisotropyEnable = supportAnisotropy
+    , maxAnisotropy = bool 1 maxAnisotropy supportAnisotropy
+    , borderColor = BORDER_COLOR_INT_TRANSPARENT_BLACK
+    , unnormalizedCoordinates = False
+    , compareEnable = False
+    , compareOp = COMPARE_OP_ALWAYS
+    , mipmapMode = SAMPLER_MIPMAP_MODE_LINEAR
+    , mipLodBias = 0
+    , minLod = 0
+    , maxLod = 0
+    } Nothing allocate
 
 withCommandBuffers :: Device -> CommandPool -> V.Vector Framebuffer -> Managed (V.Vector CommandBuffer)
 withCommandBuffers device commandPool framebuffers = do
