@@ -662,7 +662,7 @@ withTextureShaderStages device = do
               }
             , zero
               { binding = 1
-              , descriptorType = DESCRIPTOR_TYPE_SAMPLER
+              , descriptorType = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
               , descriptorCount = 1
               , stageFlags = SHADER_STAGE_FRAGMENT_BIT
               }
