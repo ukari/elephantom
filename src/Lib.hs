@@ -156,7 +156,7 @@ someFunc = runResourceT $ do
   liftIO $ print $ "device " <> show (deviceHandle device)
   graphicsQueue <- getDeviceQueue device (graphicsFamily qIndices) 0
   presentQueue <- getDeviceQueue device (presentFamily qIndices) 0
-  swapchainRes@SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
+  swapchainRes@SwapchainResource {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderRes <- withShaderStages device
   PipelineResource {..} <- Lib.withPipeline device renderPass shaderRes
   (_, commandPool) <- withCommandPool device zero
@@ -246,7 +246,7 @@ someFunc = runResourceT $ do
         , Texture (V2 50 150) (V3 0 0 0) (V2 0 1)
         ] :: VS.Vector Texture
   let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
-
+  
   SyncResource {..} <- withSyncResource device framebuffers
 
   let fps = 60
@@ -414,7 +414,7 @@ withDevice phys indices = do
     require :: "extensions" ::: [ByteString] -> [DeviceRequirement]
     require = map (flip (RequireDeviceExtension Nothing) minBound) . promote
 
-data SwapchainInfo = SwapchainInfo
+data SwapchainResource = SwapchainResource
   { swapchain :: SwapchainKHR
   , surfaceFormat :: SurfaceFormatKHR
   , extent :: Extent2D
@@ -428,7 +428,7 @@ chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode
 chooseSharingMode indices | length indices == 1 = SHARING_MODE_EXCLUSIVE
                           | otherwise = SHARING_MODE_CONCURRENT
 
-withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> Managed SwapchainInfo
+withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> Managed SwapchainResource
 withSwapchain phys surf device indices extent = do
   (_, formats) <- getPhysicalDeviceSurfaceFormatsKHR phys surf
   let surfaceFormat = formats!0
@@ -460,7 +460,7 @@ withSwapchain phys surf device indices extent = do
   imageViews <- mapM (Lib.withImageView device surfaceFormat) images
   renderPass <- Lib.withRenderPass device surfaceFormat
   framebuffers <- mapM (Lib.withFramebuffer device extent renderPass) imageViews
-  pure SwapchainInfo {..}
+  pure SwapchainResource {..}
 
 withImageView :: Device -> SurfaceFormatKHR -> Image -> Managed ImageView
 withImageView device surfaceFormat img =
@@ -483,14 +483,14 @@ withImageView device surfaceFormat img =
        }
      } Nothing allocate
 
-data ShaderStageInfo = ShaderStageInfo
+data ShaderResource = ShaderResource
   { shaderStages :: V.Vector (SomeStruct PipelineShaderStageCreateInfo)
   , descriptorSetLayouts :: V.Vector DescriptorSetLayout
   , descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
   , vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
   }
 
-withShaderStages :: Device -> Managed ShaderStageInfo
+withShaderStages :: Device -> Managed ShaderResource
 withShaderStages device = do
   vertCode <- return [vert|
   #version 450
@@ -579,9 +579,9 @@ withShaderStages device = do
             }
           ]
         }
-  pure ShaderStageInfo {..}
+  pure ShaderResource {..}
 
-withTextureShaderStages :: Device -> Managed ShaderStageInfo
+withTextureShaderStages :: Device -> Managed ShaderResource
 withTextureShaderStages device = do
   vertCode <- return [vert|
   #version 450
@@ -686,7 +686,7 @@ withTextureShaderStages device = do
             }
           ]
         }
-  pure ShaderStageInfo {..}
+  pure ShaderResource {..}
 
 withDescriptorSetLayout :: Device -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetLayout
 withDescriptorSetLayout device descriptorSetLayoutCreateInfo =
@@ -697,8 +697,8 @@ data DescriptorSetResource = DescriptorSetResource
   , descriptorSets :: !(V.Vector DescriptorSet)
   } deriving (Show)
 
-withDescriptorSetResource :: Device -> SwapchainInfo -> ShaderStageInfo -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
-withDescriptorSetResource device SwapchainInfo {..} ShaderStageInfo {..} descriptorSetLayoutCreateInfo = do
+withDescriptorSetResource :: Device -> SwapchainResource -> ShaderResource -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
+withDescriptorSetResource device SwapchainResource {..} ShaderResource {..} descriptorSetLayoutCreateInfo = do
   -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
   -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
   -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
@@ -765,8 +765,8 @@ data PipelineResource = PipelineResource
   , pipelineLayout :: !PipelineLayout
   } deriving (Show)
 
-withPipeline :: Device -> RenderPass -> ShaderStageInfo -> Managed PipelineResource
-withPipeline device renderPass ShaderStageInfo {..} = do
+withPipeline :: Device -> RenderPass -> ShaderResource -> Managed PipelineResource
+withPipeline device renderPass ShaderResource {..} = do
   -- https://stackoverflow.com/questions/56928041/what-is-the-purpose-of-multiple-setlayoutcounts-of-vulkan-vkpipelinelayoutcreate
   -- https://vulkan.lunarg.com/doc/view/1.2.135.0/linux/tutorial/html/08-init_pipeline_layout.html
   (_, pipelineLayout) <- withPipelineLayout device zero
