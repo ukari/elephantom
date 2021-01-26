@@ -27,24 +27,24 @@ offsetOf name = do
     let [fieldConTs] = fieldConTss
         normals = lefts fieldConTs :: [Type]
         records = rights fieldConTs :: [(Name, Type)]
-        isNormal = length normals /= 0 :: Bool
-        isRecord = length records /= 0 :: Bool
-        sizes | isNormal = map (trans . nil . pure) $ normals :: [Q Exp]
-              | isRecord = map (trans . nil . pure . snd) $ records
+        isNormal = not . null $ normals :: Bool
+        isRecord = not . null $ records :: Bool
+        sizes | isNormal = map (trans . nil . pure) normals :: [Q Exp]
+              | isRecord = map (trans . nil . pure . snd) records
               | otherwise = fail "only support c struct like storable types (shouldn't run here)"
         sizesE = listE sizes
         normalsLength = length sizes
         rnames = map (nameBase . fst) records
     [|\case
-       Record fieldstr -> case (elemIndex fieldstr rnames) of
+       Record fieldstr -> case elemIndex fieldstr rnames of
          Just idx -> sum $ take idx $(sizesE)
          Nothing -> error $ "field '" <> fieldstr <> "' is not found in '" <> fullname <> "'"
-       Normal idx -> case idx < normalsLength of
-         True -> sum $ take idx $(sizesE)
-         False -> error $ "field with index '" <> show idx <> "' is not found in '" <> fullname <> "'"
+       Normal idx -> if idx < normalsLength
+         then sum $ take idx $(sizesE)
+         else error $ "field with index '" <> show idx <> "' is not found in '" <> fullname <> "'"
      |]
   where
-    fConT :: Con -> [Either (Type) (Name, Type)]
+    fConT :: Con -> [Either Type (Name, Type)]
     fConT (NormalC _ iFields) = map (Left . fStrictType) iFields
     fConT (RecC _ sFields) = map (Right . fVarStrictType) sFields
     fConT _ = fail "only support c struct like storable types"
@@ -53,7 +53,7 @@ offsetOf name = do
     fVarStrictType :: VarStrictType -> (Name, Type)
     fVarStrictType (fieldname, _, tp) = (fieldname, tp)
     nil :: Q Type -> Q Exp
-    nil t = sigE (varE 'undefined) t
+    nil = sigE (varE 'undefined)
     sizeof = varE 'sizeOf
     dot = varE '(.)
     app = varE '($)
