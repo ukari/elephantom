@@ -156,9 +156,9 @@ someFunc = runResourceT $ do
   liftIO $ print $ "device " <> show (deviceHandle device)
   graphicsQueue <- getDeviceQueue device (graphicsFamily qIndices) 0
   presentQueue <- getDeviceQueue device (presentFamily qIndices) 0
-  SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
-  shaderStageInfo@ShaderStageInfo {..} <- withShaderStages device
-  PipelineResource {..} <- Lib.withPipeline device renderPass shaderStageInfo
+  swapchainRes@SwapchainInfo {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
+  shaderRes <- withShaderStages device
+  PipelineResource {..} <- Lib.withPipeline device renderPass shaderRes
   (_, commandPool) <- withCommandPool device zero
     { queueFamilyIndex = graphicsFamily qIndices
     , flags = zeroBits
@@ -212,24 +212,7 @@ someFunc = runResourceT $ do
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
-  -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
-  -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
-  -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
-  descriptorPool <- snd <$> withDescriptorPool device zero
-    { poolSizes =
-        [ zero
-          { type' = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-          , descriptorCount = 1
-          }
-        ]
-    , maxSets = fromIntegral . length $ images
-    , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT -- VUID-vkFreeDescriptorSets-descriptorPool-00312: descriptorPool must have been created with the VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag
-    } Nothing allocate
-  descriptorSets <- snd <$> withDescriptorSets device zero
-    { descriptorPool = descriptorPool
-    , setLayouts = descriptorSetLayouts
-    } allocate
-  liftIO $ print descriptorSets
+  DescriptorSetResource {..} <- withDescriptorSetResource device swapchainRes shaderRes (descriptorSetLayoutCreateInfos shaderRes ! 0)
   let bufferInfos :: V.Vector DescriptorBufferInfo
       bufferInfos =
         [ zero
@@ -253,22 +236,9 @@ someFunc = runResourceT $ do
   mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] indexBuffer descriptorSets (VS.length vertices)) (V.zip commandBuffers framebuffers)
 
   textureSampler <- withTextureSampler phys device
-  textureShaderStages <- Lib.withTextureShaderStages device
-  texturePipeline <- Lib.withPipeline device renderPass textureShaderStages
-  textureDescriptorPool <- snd <$> withDescriptorPool device zero
-    { poolSizes =
-        [ zero
-          { type' = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-          , descriptorCount = 1
-          }
-        , zero
-          { type' = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-          , descriptorCount = 1
-          }
-        ]
-    , maxSets = fromIntegral . length $ images
-    , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
-    } Nothing allocate
+  textureShaderRes <- Lib.withTextureShaderStages device
+  texturePipelineRes <- Lib.withPipeline device renderPass textureShaderRes
+  textureDescriptorSetResource <- withDescriptorSetResource device swapchainRes textureShaderRes (descriptorSetLayoutCreateInfos textureShaderRes ! 0)
   let texCoords =
         [ Texture (V2 50 50) (V3 0 0 0) (V2 0 0)
         , Texture (V2 250 50) (V3 0 0 0) (V2 0 1)
@@ -276,7 +246,6 @@ someFunc = runResourceT $ do
         , Texture (V2 50 150) (V3 0 0 0) (V2 0 1)
         ] :: VS.Vector Texture
   let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
-  
 
   SyncResource {..} <- withSyncResource device framebuffers
 
@@ -728,8 +697,8 @@ data DescriptorSetResource = DescriptorSetResource
   , descriptorSets :: !(V.Vector DescriptorSet)
   } deriving (Show)
 
-withDescriptorSetResource :: Device -> "swapchain images" ::: V.Vector Image -> V.Vector DescriptorSetLayout -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
-withDescriptorSetResource device images descriptorSetLayouts descriptorSetLayoutCreateInfo = do
+withDescriptorSetResource :: Device -> SwapchainInfo -> ShaderStageInfo -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
+withDescriptorSetResource device SwapchainInfo {..} ShaderStageInfo {..} descriptorSetLayoutCreateInfo = do
   -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
   -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
   -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
