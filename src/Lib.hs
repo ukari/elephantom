@@ -62,16 +62,18 @@ import Data.Bits ((.&.), (.|.), shift, zeroBits)
 import Data.Vector ((!), (!?), uniq, modify)
 import qualified Data.Vector.Storable as VS
 import qualified Data.Vector as V
-import Data.Vector.Algorithms.Intro (sort)
-import Data.Vector.Algorithms.Intro as V
+--import Data.Vector.Algorithms.Intro (sort)
+import qualified Data.Vector.Algorithms.Intro as V
 --import Data.Set (Set, union)
 --import qualified Data.Set as Set
 import Data.Maybe (fromMaybe, isNothing, isJust)
 import Data.Bool (bool)
+import Data.List (group, sort)
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
 import qualified Streamly.Prelude as S
+import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
 import Control.Monad (join)
 import Control.Monad.Trans.Cont (ContT)
@@ -149,7 +151,7 @@ someFunc = runResourceT $ do
   --liftIO . print =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
   liftIO $ print qIndices
-  let queueFamilyIndices = uniq . modify sort $ fmap ($ qIndices) [graphicsFamily, presentFamily]
+  let queueFamilyIndices = uniq . modify V.sort $ fmap ($ qIndices) [graphicsFamily, presentFamily]
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
   graphicsQueue <- getDeviceQueue device (graphicsFamily qIndices) 0
@@ -253,6 +255,20 @@ someFunc = runResourceT $ do
   textureSampler <- withTextureSampler phys device
   textureShaderStages <- Lib.withTextureShaderStages device
   texturePipeline <- Lib.withPipeline device renderPass textureShaderStages
+  textureDescriptorPool <- snd <$> withDescriptorPool device zero
+    { poolSizes =
+        [ zero
+          { type' = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+          , descriptorCount = 1
+          }
+        , zero
+          { type' = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+          , descriptorCount = 1
+          }
+        ]
+    , maxSets = fromIntegral . length $ images
+    , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
+    } Nothing allocate
   let texCoords =
         [ Texture (V2 50 50) (V3 0 0 0) (V2 0 0)
         , Texture (V2 250 50) (V3 0 0 0) (V2 0 1)
@@ -501,6 +517,7 @@ withImageView device surfaceFormat img =
 data ShaderStageInfo = ShaderStageInfo
   { shaderStages :: V.Vector (SomeStruct PipelineShaderStageCreateInfo)
   , descriptorSetLayouts :: V.Vector DescriptorSetLayout
+  , descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
   , vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
   }
 
@@ -706,6 +723,39 @@ withDescriptorSetLayout :: Device -> DescriptorSetLayoutCreateInfo '[] -> Manage
 withDescriptorSetLayout device descriptorSetLayoutCreateInfo =
   snd <$> Vulkan.withDescriptorSetLayout device descriptorSetLayoutCreateInfo Nothing allocate
 
+data DescriptorSetResource = DescriptorSetResource
+  { descriptorPool :: !(DescriptorPool)
+  , descriptorSets :: !(V.Vector DescriptorSet)
+  } deriving (Show)
+
+withDescriptorSetResource :: Device -> "swapchain images" ::: V.Vector Image -> V.Vector DescriptorSetLayout -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
+withDescriptorSetResource device images descriptorSetLayouts descriptorSetLayoutCreateInfo = do
+  -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
+  -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
+  -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
+  let descriptorPoolCreateInfo = makeDescriptorPoolCreateInfo images descriptorSetLayoutCreateInfo
+  descriptorPool <- snd <$> withDescriptorPool device descriptorPoolCreateInfo Nothing allocate
+  descriptorSets <- snd <$> withDescriptorSets device zero
+    { descriptorPool = descriptorPool
+    , setLayouts = descriptorSetLayouts
+    } allocate
+  pure DescriptorSetResource {..}
+
+makeDescriptorPoolCreateInfo :: "swapchain images" ::: V.Vector Image -> DescriptorSetLayoutCreateInfo '[] -> DescriptorPoolCreateInfo '[]
+makeDescriptorPoolCreateInfo images info = zero
+  { poolSizes = V.fromList
+    [ zero
+      { type' = t
+      , descriptorCount = fromIntegral n
+      }
+    | (t, n) <- analyse info ]
+  , maxSets = fromIntegral . length $ images
+  , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT -- VUID-vkFreeDescriptorSets-descriptorPool-00312: descriptorPool must have been created with the VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag
+  }
+  where
+    analyse :: DescriptorSetLayoutCreateInfo '[] -> [(DescriptorType, Int)]
+    analyse = map (head &&& length) . group . sort . map (descriptorType :: DescriptorSetLayoutBinding -> DescriptorType) . V.toList . bindings
+
 withRenderPass :: Device -> SurfaceFormatKHR -> Managed RenderPass
 withRenderPass device surfFormat = do
   colorAttachment <- pure (zero
@@ -748,6 +798,8 @@ data PipelineResource = PipelineResource
 
 withPipeline :: Device -> RenderPass -> ShaderStageInfo -> Managed PipelineResource
 withPipeline device renderPass ShaderStageInfo {..} = do
+  -- https://stackoverflow.com/questions/56928041/what-is-the-purpose-of-multiple-setlayoutcounts-of-vulkan-vkpipelinelayoutcreate
+  -- https://vulkan.lunarg.com/doc/view/1.2.135.0/linux/tutorial/html/08-init_pipeline_layout.html
   (_, pipelineLayout) <- withPipelineLayout device zero
     { setLayouts = descriptorSetLayouts
     } Nothing allocate
