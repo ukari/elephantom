@@ -30,10 +30,9 @@ import Vulkan hiding (allocate)
 import qualified Vulkan.Core10 as Core10
 import qualified Vulkan.Extensions.VK_KHR_swapchain as Swap
 import Vulkan.Extensions.VK_EXT_acquire_xlib_display
-import Vulkan.Utils.Debug
-import Vulkan.Utils.ShaderQQ
-import Vulkan.Utils.Initialization
---import Vulkan.Utils.QueueAssignment
+--import Vulkan.Utils.Debug
+import Vulkan.Utils.ShaderQQ (vert, frag)
+import Vulkan.Utils.Initialization (createDebugInstanceFromRequirements, createDeviceFromRequirements)
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
 import Codec.Picture (PixelRGBA8( .. ), readImage, imageData)
@@ -69,7 +68,7 @@ import qualified Data.Vector.Algorithms.Intro as V
 --import qualified Data.Set as Set
 import Data.Maybe (fromMaybe, isNothing, isJust)
 import Data.Bool (bool)
-import Data.List (group, sort)
+import Data.List ((\\), group, sort)
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
@@ -296,7 +295,7 @@ someFunc = runResourceT $ do
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  runResourceT $ memCopy allocator textureStagingBufferAllocation (imageData pixels)
+  --runResourceT $ memCopy allocator textureStagingBufferAllocation (imageData pixels)
   let textureFormat = FORMAT_R8G8B8A8_SRGB
   (textureImage, textureImageAllocation, _) <- snd <$> Vma.withImage allocator zero
     { imageType = IMAGE_TYPE_2D
@@ -310,8 +309,9 @@ someFunc = runResourceT $ do
     , samples = SAMPLE_COUNT_1_BIT
     , sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--_ONLY
     } allocate
+  runResourceT $ memCopy allocator textureImageAllocation (imageData pixels)
   transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
   --cmdCopyImageToBuffer 
   transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
@@ -391,6 +391,7 @@ data AppException
   | VulkanAllocateMemoryException String
   | VulkanGraphicsFamilyIndexException
   | VulkanPresentFamilyIndexException
+  | VulkanTransferFamilyIndexException
   | VulkanLayoutTransitionUnsupport
   deriving (Show)
 
@@ -456,28 +457,63 @@ getPhysicalDevice inst = do
   (_, devices) <- enumeratePhysicalDevices inst
   return $ devices ! 0
 
+data QueueResource = QueueResource
+  { graphicsQueue :: !Word32
+  , presentQueue :: !Word32
+  , transferQueue :: !Word32
+  } deriving (Show)
+
 data QueueFamilyIndices = QueueFamilyIndices
   { graphicsFamily :: !Word32
   , presentFamily :: !Word32
-  } deriving (Eq, Show, Read)
+  , transferFamily :: !Word32
+  } deriving (Show)
 
 findQueueFamilyIndices :: MonadIO m => PhysicalDevice -> SurfaceKHR -> m QueueFamilyIndices
 findQueueFamilyIndices pdevice surf = do
   queueFamilies <- getPhysicalDeviceQueueFamilyProperties pdevice
-  graphicsQueueFamilyIndices <- return $ V.map fst $ V.filter isGraphicsQueue $ V.indexed queueFamilies
-  presentQueueFamilyIndices <- V.map fst <$> V.filterM isPresentQueue (V.indexed queueFamilies)
-  graphicsQueueFamilyIndex <- tryWithEM VulkanGraphicsFamilyIndexException (graphicsQueueFamilyIndices !? 0)
-  presentQueueFamilyIndex <- return $ pickPresentFamilyIndex graphicsQueueFamilyIndex presentQueueFamilyIndices
-  return $ QueueFamilyIndices (fromIntegral graphicsQueueFamilyIndex) (fromIntegral presentQueueFamilyIndex)
+  liftIO $ print queueFamilies
+  let graphicsQueueFamilyIndices = V.map fst . V.filter isGraphicsFamily . V.indexed $ queueFamilies
+  presentQueueFamilyIndices <- V.map fst <$> (V.filterM isPresentFamily . V.indexed $ queueFamilies)
+  let transferOnlyQueueFamilyIndices = V.map fst . V.filter isTransferOnlyFamily . V.indexed $ queueFamilies
+  let transferQueueFamilyIndices = V.map fst . V.filter isTransferFamily . V.indexed $ queueFamilies
+  let graphicsFamily = tryWithE VulkanGraphicsFamilyIndexException $ graphicsQueueFamilyIndices !? 0
+  let presentFamily = tryWithE VulkanPresentFamilyIndexException $ pickPresentFamilyIndices [graphicsFamily] presentQueueFamilyIndices !? 0
+  let transferFamily = if not . null $ transferOnlyQueueFamilyIndices
+        then transferOnlyQueueFamilyIndices ! 0
+        else tryWithE VulkanPresentFamilyIndexException (pickTransferFamilyIndices [graphicsFamily] [presentFamily] transferQueueFamilyIndices !? 0)
+  pure QueueFamilyIndices
+    { graphicsFamily = fromIntegral graphicsFamily
+    , presentFamily = fromIntegral presentFamily
+    , transferFamily = fromIntegral transferFamily
+    }
   where
-    isGraphicsQueue :: (Int, QueueFamilyProperties) -> Bool
-    isGraphicsQueue (_i, q) = QUEUE_GRAPHICS_BIT .&. (queueFlags q) /= zeroBits && (queueCount q > 0)
-    isPresentQueue :: MonadIO m => (Int, QueueFamilyProperties) -> m Bool
-    isPresentQueue (i, _q) = getPhysicalDeviceSurfaceSupportKHR pdevice (fromIntegral i) surf
-    -- prefer to pick present queue which is different from graphics queue
-    pickPresentFamilyIndex :: "graphicsQueueFamilyIndex" ::: Int -> V.Vector Int -> Int
-    pickPresentFamilyIndex gi pis | gi `notElem` pis = tryWithE VulkanPresentFamilyIndexException (pis !? 0)
-                                  | otherwise = tryWith gi (V.findIndex (/= gi) pis)
+    isGraphicsFamily :: (Int, QueueFamilyProperties) -> Bool
+    isGraphicsFamily (_i, q) = QUEUE_GRAPHICS_BIT .&. (queueFlags q) /= zeroBits && (queueCount q > 0)
+    isPresentFamily :: MonadIO m => (Int, QueueFamilyProperties) -> m Bool
+    isPresentFamily (i, _q) = getPhysicalDeviceSurfaceSupportKHR pdevice (fromIntegral i) surf
+    isTransferFamily :: (Int, QueueFamilyProperties) -> Bool
+    isTransferFamily (_i, q) = QUEUE_TRANSFER_BIT .&. (queueFlags q) /= zeroBits && (queueCount q > 0)
+    isTransferOnlyFamily :: (Int, QueueFamilyProperties) -> Bool
+    isTransferOnlyFamily (_i, q) = (QUEUE_TRANSFER_BIT .|. QUEUE_GRAPHICS_BIT .|. QUEUE_COMPUTE_BIT) .&. (queueFlags q) == QUEUE_TRANSFER_BIT && (queueCount q > 0)
+    -- prefer to pick present family which is different from selected graphics family
+    pickPresentFamilyIndices :: "graphicsQueueFamilyIndices" ::: V.Vector Int -> V.Vector Int -> V.Vector Int
+    pickPresentFamilyIndices gis pis = do
+      let left = V.toList pis \\ V.toList gis
+      if not . null $ left
+        then V.fromList left
+        else pis
+    -- prefer to pick transfer family which is different from selected graphics family and present family
+    -- prefer use selected graphics family than selected present family when no choice
+    pickTransferFamilyIndices :: "graphicsQueueFamilyIndices" ::: V.Vector Int -> "presentQueueFamilyIndices" ::: V.Vector Int -> V.Vector Int -> V.Vector Int
+    pickTransferFamilyIndices gis pis tis = do
+      let leftContainG = V.toList tis \\ V.toList pis
+      let left = (leftContainG \\ V.toList gis) 
+      if not . null $ left
+        then V.fromList left
+        else if not . null $ leftContainG
+        then V.fromList leftContainG
+        else tis
 
 withDevice :: PhysicalDevice -> "queueFamilyIndices" ::: V.Vector Word32 -> Managed Device
 withDevice phys indices = do
