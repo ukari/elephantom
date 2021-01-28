@@ -36,7 +36,8 @@ import Vulkan.Utils.Initialization
 --import Vulkan.Utils.QueueAssignment
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
-import Codec.Picture(PixelRGBA8( .. ), readImage, imageData)
+import Codec.Picture (PixelRGBA8( .. ), readImage, imageData)
+import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
 --import Graphics.Rasterific.Texture
 
@@ -158,7 +159,7 @@ someFunc = runResourceT $ do
   presentQueue <- getDeviceQueue device (presentFamily qIndices) 0
   swapchainRes@SwapchainResource {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderRes <- withShaderStages device
-  PipelineResource {..} <- Lib.withPipeline device renderPass shaderRes
+  pipelineResource <- Lib.withPipeline device renderPass shaderRes
   (_, commandPool) <- withCommandPool device zero
     { queueFamilyIndex = graphicsFamily qIndices
     , flags = zeroBits
@@ -194,7 +195,7 @@ someFunc = runResourceT $ do
     , usage = BUFFER_USAGE_INDEX_BUFFER_BIT
     , sharingMode = SHARING_MODE_EXCLUSIVE
     } zero {
-      Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--Vma.MEMORY_USAGE_GPU_ONLY
+      Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
     } allocate
   runResourceT $ memCopy allocator indexBufferAllocation indices
 
@@ -204,7 +205,7 @@ someFunc = runResourceT $ do
     , sharingMode = chooseSharingMode queueFamilyIndices
     , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU --GPU_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
     } allocate
   let uniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
@@ -212,7 +213,7 @@ someFunc = runResourceT $ do
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
   runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
-  DescriptorSetResource {..} <- withDescriptorSetResource device swapchainRes shaderRes (descriptorSetLayoutCreateInfos shaderRes ! 0)
+  descriptorSetResource <- withDescriptorSetResource device swapchainRes shaderRes (descriptorSetLayoutCreateInfos shaderRes ! 0)
   let bufferInfos :: V.Vector DescriptorBufferInfo
       bufferInfos =
         [ zero
@@ -221,19 +222,19 @@ someFunc = runResourceT $ do
           , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
           } :: DescriptorBufferInfo
         ]
-  updateDescriptorSets device
-    [ SomeStruct $ zero
-      { dstSet = descriptorSets ! 0
-      , dstBinding = 0
-      , dstArrayElement = 0
-      , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-      , descriptorCount = fromIntegral . length $ bufferInfos
-      , bufferInfo = bufferInfos
-      , imageInfo = []
-      , texelBufferView = []
-      }
-    ] []
-  mapM_ (submitCommand pipeline pipelineLayout extent renderPass [vertexBuffer] indexBuffer descriptorSets (VS.length vertices)) (V.zip commandBuffers framebuffers)
+  -- updateDescriptorSets device
+  --   [ SomeStruct $ zero
+  --     { dstSet = descriptorSets descriptorSetResource ! 0
+  --     , dstBinding = 0
+  --     , dstArrayElement = 0
+  --     , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+  --     , descriptorCount = fromIntegral . length $ bufferInfos
+  --     , bufferInfo = bufferInfos
+  --     , imageInfo = []
+  --     , texelBufferView = []
+  --     }
+  --   ] []
+  -- mapM_ (submitCommand (pipeline (pipelineResource :: PipelineResource)) (pipelineLayout (pipelineResource :: PipelineResource)) extent renderPass [vertexBuffer] indexBuffer (descriptorSets descriptorSetResource) (fromIntegral . VS.length $ indices)) (V.zip commandBuffers framebuffers)
 
   textureSampler <- withTextureSampler phys device
   textureShaderRes <- Lib.withTextureShaderStages device
@@ -241,15 +242,104 @@ someFunc = runResourceT $ do
   textureDescriptorSetResource <- withDescriptorSetResource device swapchainRes textureShaderRes (descriptorSetLayoutCreateInfos textureShaderRes ! 0)
   let texCoords =
         [ Texture (V2 50 50) (V3 0 0 0) (V2 0 0)
-        , Texture (V2 250 50) (V3 0 0 0) (V2 0 1)
+        , Texture (V2 250 50) (V3 0 0 0) (V2 1 0)
         , Texture (V2 250 150) (V3 0 0 0) (V2 1 1)
         , Texture (V2 50 150) (V3 0 0 0) (V2 0 1)
         ] :: VS.Vector Texture
-  let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
+  (texCoordsBuffer, texCoordsBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
+    { size = fromIntegral $ sizeOf (texCoords VS.! 0) * VS.length texCoords
+    , usage = BUFFER_USAGE_INDEX_BUFFER_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero {
+      Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    } allocate
+  runResourceT $ memCopy allocator texCoordsBufferAllocation texCoords
+
+  let texIndices = [0, 1, 2, 2, 3, 0] :: VS.Vector Word32
+  (texIndexBuffer, texIndexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
+    { size = fromIntegral $ sizeOf (texIndices VS.! 0) * VS.length texIndices
+    , usage = BUFFER_USAGE_INDEX_BUFFER_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero {
+      Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    } allocate
+  runResourceT $ memCopy allocator texIndexBufferAllocation texIndices
   
+  let texUniform = ShaderUniform
+        { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
+        , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
+        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*1) (500/2*1) 0) (axisAngle (V3 0 0 1) (0/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
+        }
+  (texUniformBuffer, texUniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
+    { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
+    , usage = BUFFER_USAGE_UNIFORM_BUFFER_BIT -- .|. BUFFER_USAGE_TRANSFER_DST_BIT
+    , sharingMode = chooseSharingMode queueFamilyIndices
+    , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    } allocate
+  runResourceT $ memCopyU allocator texUniformBufferAllocation texUniform -- early free
+  let texBufferInfos :: V.Vector DescriptorBufferInfo
+      texBufferInfos =
+        [ zero
+          { buffer = texUniformBuffer
+          , offset = 0
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        ]
+
+  let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
+  let textureFormat = FORMAT_R8G8B8A8_SRGB
+  (textureImage, textureImageAllocation, _) <- snd <$> Vma.withImage allocator zero
+    { imageType = IMAGE_TYPE_2D
+    , extent = Extent3D 200 100 1
+    , mipLevels = 1
+    , arrayLayers = 1
+    , format = textureFormat
+    , tiling = IMAGE_TILING_OPTIMAL
+    , initialLayout = IMAGE_LAYOUT_UNDEFINED
+    , usage = IMAGE_USAGE_SAMPLED_BIT
+    , samples = SAMPLE_COUNT_1_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
+    } allocate
+  runResourceT $ memCopy allocator textureImageAllocation (imageData pixels)
+  transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+  --cmdCopyImageToBuffer 
+  transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  textureImageView <- Lib.withImageView device textureFormat textureImage
+  updateDescriptorSets device
+    [ SomeStruct $ zero
+      { dstSet = descriptorSets textureDescriptorSetResource ! 0
+      , dstBinding = 0
+      , dstArrayElement = 0
+      , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+      , descriptorCount = fromIntegral . length $ texBufferInfos
+      , bufferInfo = texBufferInfos
+      , imageInfo = []
+      , texelBufferView = []
+      }
+    , SomeStruct $ zero
+      { dstSet = descriptorSets textureDescriptorSetResource ! 0
+      , dstBinding = 1
+      , dstArrayElement = 0
+      , descriptorType = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+      , descriptorCount = 1
+      , imageInfo =
+        [ zero
+          { imageLayout = IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+          , imageView = textureImageView
+          , sampler = textureSampler
+          }
+        ]
+      }
+    ] []
+  mapM_ (submitCommand (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) extent renderPass [texCoordsBuffer] texIndexBuffer (descriptorSets textureDescriptorSetResource) (fromIntegral . VS.length $ texIndices)) (V.zip commandBuffers framebuffers)
+
   SyncResource {..} <- withSyncResource device framebuffers
 
-  let fps = 60
+  let fps = 1
   let sync = 0
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
   return undefined
@@ -457,17 +547,17 @@ withSwapchain phys surf device indices extent = do
         }
   swapchain <- snd <$> withSwapchainKHR device swapchainCreateInfo Nothing allocate
   images <- snd <$> getSwapchainImagesKHR device swapchain
-  imageViews <- mapM (Lib.withImageView device surfaceFormat) images
+  imageViews <- mapM (Lib.withImageView device (format (surfaceFormat :: SurfaceFormatKHR))) images
   renderPass <- Lib.withRenderPass device surfaceFormat
   framebuffers <- mapM (Lib.withFramebuffer device extent renderPass) imageViews
   pure SwapchainResource {..}
 
-withImageView :: Device -> SurfaceFormatKHR -> Image -> Managed ImageView
-withImageView device surfaceFormat img =
+withImageView :: Device -> Format -> Image -> Managed ImageView
+withImageView device format img =
    pure . snd =<< Vulkan.withImageView device zero
      { image = img
      , viewType = IMAGE_VIEW_TYPE_2D
-     , format = format (surfaceFormat :: SurfaceFormatKHR)
+     , format = format
      , components = zero
        { r = COMPONENT_SWIZZLE_IDENTITY
        , g = COMPONENT_SWIZZLE_IDENTITY
@@ -842,6 +932,37 @@ withTextureSampler phys device = do
     , maxLod = 0
     } Nothing allocate
 
+transitionImageLayout :: MonadIO m => CommandBuffer -> Image -> "oldLayout" ::: ImageLayout -> "newLayout" ::: ImageLayout -> m ()
+transitionImageLayout commandBuffer image oldLayout newLayout = useCommandBuffer commandBuffer zero { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT } do
+  barrier <- return $ (zero
+    { oldLayout = oldLayout
+    , newLayout = newLayout
+    , image = image
+    , srcQueueFamilyIndex = QUEUE_FAMILY_IGNORED
+    , dstQueueFamilyIndex = QUEUE_FAMILY_IGNORED
+    , subresourceRange = zero
+      { aspectMask = IMAGE_ASPECT_COLOR_BIT
+      , baseMipLevel = 0
+      , levelCount = 1
+      , baseArrayLayer = 0
+      , layerCount = 1
+      }
+    })
+  case (oldLayout, newLayout) of
+    (IMAGE_LAYOUT_UNDEFINED, IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) ->
+      cmdPipelineBarrier commandBuffer PIPELINE_STAGE_TOP_OF_PIPE_BIT PIPELINE_STAGE_TRANSFER_BIT zero [] []
+      [ SomeStruct (barrier
+        { srcAccessMask = zero
+        , dstAccessMask = ACCESS_TRANSFER_WRITE_BIT
+        } :: ImageMemoryBarrier '[]) ]
+    (IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) ->
+      cmdPipelineBarrier commandBuffer PIPELINE_STAGE_TOP_OF_PIPE_BIT PIPELINE_STAGE_TRANSFER_BIT zero [] []
+      [ SomeStruct (barrier
+        { srcAccessMask = ACCESS_TRANSFER_WRITE_BIT
+        , dstAccessMask = ACCESS_SHADER_READ_BIT
+        } :: ImageMemoryBarrier '[]) ]
+    _ -> throw VulkanLayoutTransitionUnsupport
+
 withCommandBuffers :: Device -> CommandPool -> V.Vector Framebuffer -> Managed (V.Vector CommandBuffer)
 withCommandBuffers device commandPool framebuffers = do
   commandBuffers <- snd <$> Vulkan.withCommandBuffers device zero
@@ -856,7 +977,7 @@ submitCommand :: Pipeline -> PipelineLayout
               -> "vertexBuffers" ::: V.Vector Buffer
               -> "indexBuffer" ::: Buffer
               -> "descriptorSets" ::: V.Vector DescriptorSet
-              -> "drawSize" ::: Int
+              -> "drawSize" ::: Word32
               -> (CommandBuffer, Framebuffer)
               -> Managed ()
 submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuffers indexBuffer descriptorSets drawSize (commandBuffer, framebuffer) = do
@@ -895,7 +1016,7 @@ submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuff
         cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
         cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
         cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
-        cmdDrawIndexed commandBuffer (3) 1 0 0 0
+        cmdDrawIndexed commandBuffer (drawSize) 1 0 0 0
         --cmdDraw commandBuffer 3 1 0 0
 
 data SyncResource = SyncResource
@@ -922,3 +1043,4 @@ memCopyU allocator memAllocation datas = do
   bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
   liftIO $ with datas $ \ptr ->
     copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral . sizeOf $ (undefined :: a)
+
