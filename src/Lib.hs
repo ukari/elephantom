@@ -289,6 +289,14 @@ someFunc = runResourceT $ do
         ]
 
   let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
+  (textureStagingBuffer, textureStagingBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
+    { size = fromIntegral $ (sizeOf . VS.head $ imageData pixels) * VS.length (imageData pixels)
+    , usage = BUFFER_USAGE_TRANSFER_SRC_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
+    } allocate
+  runResourceT $ memCopy allocator textureStagingBufferAllocation (imageData pixels)
   let textureFormat = FORMAT_R8G8B8A8_SRGB
   (textureImage, textureImageAllocation, _) <- snd <$> Vma.withImage allocator zero
     { imageType = IMAGE_TYPE_2D
@@ -302,9 +310,8 @@ someFunc = runResourceT $ do
     , samples = SAMPLE_COUNT_1_BIT
     , sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  runResourceT $ memCopy allocator textureImageAllocation (imageData pixels)
   transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
   --cmdCopyImageToBuffer 
   transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
