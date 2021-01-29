@@ -325,24 +325,24 @@ someFunc = runResourceT $ do
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  -- withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-  --transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-  -- withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> cmdCopyBufferToImage cb textureStagingBuffer textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-  --   [ zero
-  --     { bufferOffset = 0
-  --     , bufferRowLength = 0
-  --     , bufferImageHeight = 0
-  --     , imageSubresource =  zero
-  --       { aspectMask = IMAGE_ASPECT_COLOR_BIT
-  --       , mipLevel = 0
-  --       , baseArrayLayer = 0
-  --       , layerCount = 1
-  --       }
-  --     , imageOffset = Offset3D 0 0 0
-  --     , imageExtent = Extent3D (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) 1
-  --     } :: BufferImageCopy
-  --   ]
-  -- withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+  -- transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> cmdCopyBufferToImage cb textureStagingBuffer textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    [ zero
+      { bufferOffset = 0
+      , bufferRowLength = 0
+      , bufferImageHeight = 0
+      , imageSubresource =  zero
+        { aspectMask = IMAGE_ASPECT_COLOR_BIT
+        , mipLevel = 0
+        , baseArrayLayer = 0
+        , layerCount = 1
+        }
+      , imageOffset = Offset3D 0 0 0
+      , imageExtent = Extent3D (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) 1
+      } :: BufferImageCopy
+    ]
+  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
   textureImageView <- Lib.withImageView device textureFormat textureImage
   updateDescriptorSets device
     [ SomeStruct $ zero
@@ -599,16 +599,16 @@ withCommandPoolResource device QueueFamilyIndices {..} = do
     } Nothing allocate
   pure CommandPoolResource {..}
 
-withSingleTimeCommands :: MonadIO m => Device -> CommandPool -> Queue -> (CommandBuffer -> m ()) -> m ()
-withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
+withSingleTimeCommands :: Device -> CommandPool -> Queue -> (CommandBuffer -> IO ()) -> Managed ()
+withSingleTimeCommands device commandPool queue f = do
   commandBuffer <- V.head . snd <$> Vulkan.withCommandBuffers device zero
     { commandPool = commandPool
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
     , commandBufferCount = 1
     } allocate
-  _ <- pure $ useCommandBuffer commandBuffer zero
+  _ <- liftIO $ useCommandBuffer commandBuffer zero
     { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    } (f commandBuffer)
+    } (liftIO $ f commandBuffer)
   fence <- snd <$> withFence device zero Nothing allocate
   liftIO . print $ commandBufferHandle commandBuffer
   queueSubmit queue
@@ -616,7 +616,7 @@ withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
       { commandBuffers = [ commandBufferHandle commandBuffer ]
       } :: SubmitInfo '[])
     ] fence
-  --_ <- waitForFences device [ fence ] True maxBound
+  _ <- waitForFences device [ fence ] True maxBound
   pure ()
 
 data SwapchainResource = SwapchainResource
