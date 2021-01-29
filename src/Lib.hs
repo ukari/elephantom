@@ -108,9 +108,9 @@ promoteTo = \case
   KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -> Just API_VERSION_1_1
   _ -> Nothing
 
-makeRes :: MonadResource m => a -> m a
+makeRes :: (Show a, MonadResource m) => a -> m a
 makeRes x = do
-  allocate_ (liftIO . pure $ x) (liftIO . print $ "release")
+  allocate_ (liftIO . pure $ x) (liftIO . print $ "release " <> show x)
   pure x
 
 step :: (MonadIO m) => Int -> m (Maybe Int)
@@ -126,13 +126,27 @@ testRes = runResourceT $ do
   let fps = 1
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just $ res
 
+testResH :: (Show r1) => r1 -> (String -> IO ()) -> IO ()
+testResH x f = runResourceT $ do
+  liftIO $ print $ "use " <> show x
+  rtmp <- makeRes ("tmp"::String)
+  liftIO . f $ rtmp
+  liftIO . print $ "end use " <> show rtmp
+
+testRes2 :: IO ()
+testRes2 = runResourceT $ do
+  r1 <- makeRes 1
+  r2 <- makeRes 2
+  liftIO $ testResH r1 $ \rtmp ->
+    print $ "use" <> show rtmp
+  pure ()
+
 ortho' :: (Num a, Floating a) => a -> a -> a -> a -> a -> a -> M44 a
 ortho' left right bottom top near far = V4
   (V4 (2/(right - left)) 0 0 (-(right + left)/(right - left)))
   (V4 0 (2/(top - bottom)) 0 (-(top + bottom)/(top - bottom)))
   (V4 0 0 (-2/(far - near)) (-(far + near)/(far - near)))
   (V4 0 0 0 1)
-  
 
 ortho2D :: (Num a, Floating a) => a -> a -> a -> a -> M44 a
 ortho2D left right bottom top = ortho' left right bottom top (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
@@ -151,19 +165,19 @@ someFunc = runResourceT $ do
   --liftIO . print =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
   liftIO $ print qIndices
-  let queueFamilyIndices = uniq . modify V.sort $ fmap ($ qIndices) [graphicsFamily, presentFamily]
+  let queueFamilyIndices = uniq . modify V.sort $ fmap ($ qIndices) [graphicsFamily, presentFamily, transferFamily]
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
-  graphicsQueue <- getDeviceQueue device (graphicsFamily qIndices) 0
-  presentQueue <- getDeviceQueue device (presentFamily qIndices) 0
+  QueueResource {..} <- getQueueResource device qIndices
+  CommandPoolResource {..} <- withCommandPoolResource device qIndices
   swapchainRes@SwapchainResource {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderRes <- withShaderStages device
   pipelineResource <- Lib.withPipeline device renderPass shaderRes
-  (_, commandPool) <- withCommandPool device zero
-    { queueFamilyIndex = graphicsFamily qIndices
-    , flags = zeroBits
-    } Nothing allocate
-  commandBuffers <- Lib.withCommandBuffers device commandPool framebuffers
+  -- (_, commandPool) <- withCommandPool device zero
+  --   { queueFamilyIndex = graphicsFamily qIndices
+  --   , flags = zeroBits
+  --   } Nothing allocate
+  commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
   
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
@@ -247,7 +261,7 @@ someFunc = runResourceT $ do
         ] :: VS.Vector Texture
   (texCoordsBuffer, texCoordsBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ sizeOf (texCoords VS.! 0) * VS.length texCoords
-    , usage = BUFFER_USAGE_INDEX_BUFFER_BIT
+    , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT
     , sharingMode = SHARING_MODE_EXCLUSIVE
     } zero {
       Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
@@ -293,9 +307,9 @@ someFunc = runResourceT $ do
     , usage = BUFFER_USAGE_TRANSFER_SRC_BIT
     , sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
     } allocate
-  --runResourceT $ memCopy allocator textureStagingBufferAllocation (imageData pixels)
+  runResourceT $ memCopy allocator textureStagingBufferAllocation (imageData pixels)
   let textureFormat = FORMAT_R8G8B8A8_SRGB
   (textureImage, textureImageAllocation, _) <- snd <$> Vma.withImage allocator zero
     { imageType = IMAGE_TYPE_2D
@@ -309,12 +323,26 @@ someFunc = runResourceT $ do
     , samples = SAMPLE_COUNT_1_BIT
     , sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
-    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--_ONLY
+    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  runResourceT $ memCopy allocator textureImageAllocation (imageData pixels)
-  transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-  --cmdCopyImageToBuffer 
-  transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+  -- withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+  --transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+  -- withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> cmdCopyBufferToImage cb textureStagingBuffer textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+  --   [ zero
+  --     { bufferOffset = 0
+  --     , bufferRowLength = 0
+  --     , bufferImageHeight = 0
+  --     , imageSubresource =  zero
+  --       { aspectMask = IMAGE_ASPECT_COLOR_BIT
+  --       , mipLevel = 0
+  --       , baseArrayLayer = 0
+  --       , layerCount = 1
+  --       }
+  --     , imageOffset = Offset3D 0 0 0
+  --     , imageExtent = Extent3D (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) 1
+  --     } :: BufferImageCopy
+  --   ]
+  -- withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
   textureImageView <- Lib.withImageView device textureFormat textureImage
   updateDescriptorSets device
     [ SomeStruct $ zero
@@ -457,12 +485,6 @@ getPhysicalDevice inst = do
   (_, devices) <- enumeratePhysicalDevices inst
   return $ devices ! 0
 
-data QueueResource = QueueResource
-  { graphicsQueue :: !Word32
-  , presentQueue :: !Word32
-  , transferQueue :: !Word32
-  } deriving (Show)
-
 data QueueFamilyIndices = QueueFamilyIndices
   { graphicsFamily :: !Word32
   , presentFamily :: !Word32
@@ -537,15 +559,65 @@ withDevice phys indices = do
             { queueFamilyIndex = i
             , queuePriorities = [ 1 ]
             }
-          | i <- V.toList $ indices
+          | i <- V.toList indices
           ]
         -- , enabledLayerNames = []
         -- , enabledExtensionNames = extensions <> optionals
         }
-  createDeviceFromRequirements (require extensions) ((require optionals) <> optionalFeatures) phys deviceCreateInfo
+  createDeviceFromRequirements (require extensions) (require optionals <> optionalFeatures) phys deviceCreateInfo
   where
     require :: "extensions" ::: [ByteString] -> [DeviceRequirement]
     require = map (flip (RequireDeviceExtension Nothing) minBound) . promote
+
+data QueueResource = QueueResource
+  { graphicsQueue :: !Queue
+  , presentQueue :: !Queue
+  , transferQueue :: !Queue
+  } deriving (Show)
+
+getQueueResource :: MonadIO m => Device -> QueueFamilyIndices -> m QueueResource
+getQueueResource device QueueFamilyIndices {..} = do
+  graphicsQueue <- getDeviceQueue device graphicsFamily 0
+  presentQueue <- getDeviceQueue device presentFamily 0
+  transferQueue <- getDeviceQueue device transferFamily 0
+  pure QueueResource {..}
+
+data CommandPoolResource = CommandPoolResource
+  { graphicsCommandPool :: CommandPool
+  , transferCommandPool :: CommandPool
+  } deriving (Show)
+
+withCommandPoolResource :: Device -> QueueFamilyIndices -> Managed CommandPoolResource
+withCommandPoolResource device QueueFamilyIndices {..} = do
+  graphicsCommandPool <- snd <$> withCommandPool device zero
+    { queueFamilyIndex = graphicsFamily
+    , flags = zeroBits
+    } Nothing allocate
+  transferCommandPool <- snd <$> withCommandPool device zero
+    { queueFamilyIndex = transferFamily
+    , flags = zeroBits
+    } Nothing allocate
+  pure CommandPoolResource {..}
+
+withSingleTimeCommands :: MonadIO m => Device -> CommandPool -> Queue -> (CommandBuffer -> m ()) -> m ()
+withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
+  commandBuffer <- V.head . snd <$> Vulkan.withCommandBuffers device zero
+    { commandPool = commandPool
+    , level = COMMAND_BUFFER_LEVEL_PRIMARY
+    , commandBufferCount = 1
+    } allocate
+  _ <- pure $ useCommandBuffer commandBuffer zero
+    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    } (f commandBuffer)
+  fence <- snd <$> withFence device zero Nothing allocate
+  liftIO . print $ commandBufferHandle commandBuffer
+  queueSubmit queue
+    [ SomeStruct (zero
+      { commandBuffers = [ commandBufferHandle commandBuffer ]
+      } :: SubmitInfo '[])
+    ] fence
+  --_ <- waitForFences device [ fence ] True maxBound
+  pure ()
 
 data SwapchainResource = SwapchainResource
   { swapchain :: SwapchainKHR
@@ -826,7 +898,7 @@ withDescriptorSetLayout device descriptorSetLayoutCreateInfo =
   snd <$> Vulkan.withDescriptorSetLayout device descriptorSetLayoutCreateInfo Nothing allocate
 
 data DescriptorSetResource = DescriptorSetResource
-  { descriptorPool :: !(DescriptorPool)
+  { descriptorPool :: !DescriptorPool
   , descriptorSets :: !(V.Vector DescriptorSet)
   } deriving (Show)
 
@@ -860,25 +932,25 @@ makeDescriptorPoolCreateInfo images info = zero
 
 withRenderPass :: Device -> SurfaceFormatKHR -> Managed RenderPass
 withRenderPass device surfFormat = do
-  colorAttachment <- pure (zero
-    { format = format (surfFormat :: SurfaceFormatKHR)
-    , samples = SAMPLE_COUNT_1_BIT
-    , loadOp = ATTACHMENT_LOAD_OP_CLEAR
-    , storeOp = ATTACHMENT_STORE_OP_STORE
-    , stencilLoadOp = ATTACHMENT_LOAD_OP_DONT_CARE
-    , stencilStoreOp = ATTACHMENT_STORE_OP_DONT_CARE
-    , initialLayout = IMAGE_LAYOUT_UNDEFINED
-    , finalLayout = IMAGE_LAYOUT_PRESENT_SRC_KHR
-    } :: AttachmentDescription)
-  colorAttachmentRef <- pure (zero
-    { attachment = 0
-    , layout = IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-    } :: AttachmentReference)
-  subpass <- pure (zero
-    { pipelineBindPoint = PIPELINE_BIND_POINT_GRAPHICS
-    , colorAttachments = [ colorAttachmentRef ]
-    } :: SubpassDescription)
-  pure . snd =<< Vulkan.withRenderPass device zero
+  let colorAttachment = zero
+        { format = format (surfFormat :: SurfaceFormatKHR)
+        , samples = SAMPLE_COUNT_1_BIT
+        , loadOp = ATTACHMENT_LOAD_OP_CLEAR
+        , storeOp = ATTACHMENT_STORE_OP_STORE
+        , stencilLoadOp = ATTACHMENT_LOAD_OP_DONT_CARE
+        , stencilStoreOp = ATTACHMENT_STORE_OP_DONT_CARE
+        , initialLayout = IMAGE_LAYOUT_UNDEFINED
+        , finalLayout = IMAGE_LAYOUT_PRESENT_SRC_KHR
+        } :: AttachmentDescription
+  let colorAttachmentRef = zero
+        { attachment = 0
+        , layout = IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        } :: AttachmentReference
+  let subpass = zero
+        { pipelineBindPoint = PIPELINE_BIND_POINT_GRAPHICS
+        , colorAttachments = [ colorAttachmentRef ]
+        } :: SubpassDescription
+  snd <$> Vulkan.withRenderPass device zero
     { attachments = [ colorAttachment ]
     , subpasses = [ subpass ]
     } Nothing allocate
@@ -950,7 +1022,7 @@ withPipeline device renderPass ShaderResource {..} = do
       , subpass = 0
       , basePipelineHandle = zero
       } ] Nothing allocate
-  pipeline <- return $ pipelines ! 0
+  let pipeline = pipelines ! 0
   pure PipelineResource {..}
 
 withTextureSampler :: PhysicalDevice -> Device -> Managed Sampler
@@ -976,8 +1048,8 @@ withTextureSampler phys device = do
     } Nothing allocate
 
 transitionImageLayout :: MonadIO m => CommandBuffer -> Image -> "oldLayout" ::: ImageLayout -> "newLayout" ::: ImageLayout -> m ()
-transitionImageLayout commandBuffer image oldLayout newLayout = useCommandBuffer commandBuffer zero { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT } do
-  barrier <- return $ (zero
+transitionImageLayout commandBuffer image oldLayout newLayout = useCommandBuffer commandBuffer zero { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT } $ do
+  barrier <- pure (zero
     { oldLayout = oldLayout
     , newLayout = newLayout
     , image = image
@@ -1026,7 +1098,7 @@ submitCommand :: Pipeline -> PipelineLayout
 submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuffers indexBuffer descriptorSets drawSize (commandBuffer, framebuffer) = do
   useCommandBuffer commandBuffer zero -- do
     { flags = COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT --COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    } do
+    } $ do
     cmdUseRenderPass commandBuffer zero
       { renderPass = renderPass
       , framebuffer = framebuffer
@@ -1035,7 +1107,7 @@ submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuff
         , extent = extent
         }
       , clearValues = [ Color $ Float32 1 1 1 1 ]
-      } SUBPASS_CONTENTS_INLINE do
+      } SUBPASS_CONTENTS_INLINE $ do
         cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
         let offsets = const 0 <$> vertexBuffers
         let viewports =
@@ -1059,7 +1131,7 @@ submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuff
         cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
         cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
         cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
-        cmdDrawIndexed commandBuffer (drawSize) 1 0 0 0
+        cmdDrawIndexed commandBuffer drawSize 1 0 0 0
         --cmdDraw commandBuffer 3 1 0 0
 
 data SyncResource = SyncResource
@@ -1067,7 +1139,7 @@ data SyncResource = SyncResource
   , renderFinishedSemaphores :: V.Vector Semaphore
   }
 
-withSyncResource :: Device -> V.Vector Framebuffer -> Managed (SyncResource)
+withSyncResource :: Device -> V.Vector Framebuffer -> Managed SyncResource
 withSyncResource device framebuffers = do
   imageAvailableSemaphores <- mapM (const makeSemaphore) framebuffers
   renderFinishedSemaphores <- mapM (const makeSemaphore) framebuffers
@@ -1079,7 +1151,7 @@ memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allo
 memCopy allocator memAllocation datas = do
   bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
   liftIO $ VS.unsafeWith datas $ \ptr ->
-    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral ((sizeOf (undefined :: a)) * VS.length datas)
+    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral (sizeOf (undefined :: a)) * VS.length datas
 
 memCopyU :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> a -> Managed ()
 memCopyU allocator memAllocation datas = do
