@@ -38,7 +38,7 @@ import qualified VulkanMemoryAllocator as Vma
 import Codec.Picture (PixelRGBA8( .. ), readImage, imageData)
 import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
---import Graphics.Rasterific.Texture
+import Graphics.Rasterific.Texture (uniformTexture)
 
 import Language.Haskell.TH hiding (location)
 import Type.Reflection (SomeTypeRep, splitApps, typeOf)
@@ -234,19 +234,19 @@ someFunc = runResourceT $ do
           , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
           } :: DescriptorBufferInfo
         ]
-  -- updateDescriptorSets device
-  --   [ SomeStruct $ zero
-  --     { dstSet = descriptorSets descriptorSetResource ! 0
-  --     , dstBinding = 0
-  --     , dstArrayElement = 0
-  --     , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-  --     , descriptorCount = fromIntegral . length $ bufferInfos
-  --     , bufferInfo = bufferInfos
-  --     , imageInfo = []
-  --     , texelBufferView = []
-  --     }
-  --   ] []
-  -- mapM_ (submitCommand (pipeline (pipelineResource :: PipelineResource)) (pipelineLayout (pipelineResource :: PipelineResource)) extent renderPass [vertexBuffer] indexBuffer (descriptorSets descriptorSetResource) (fromIntegral . VS.length $ indices)) (V.zip commandBuffers framebuffers)
+  updateDescriptorSets device
+    [ SomeStruct $ zero
+      { dstSet = descriptorSets (descriptorSetResource :: DescriptorSetResource) ! 0
+      , dstBinding = 0
+      , dstArrayElement = 0
+      , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+      , descriptorCount = fromIntegral . length $ bufferInfos
+      , bufferInfo = bufferInfos
+      , imageInfo = []
+      , texelBufferView = []
+      }
+    ] []
+  let trianglePresent = Present (pipeline (pipelineResource :: PipelineResource)) (pipelineLayout (pipelineResource :: PipelineResource)) [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices)
 
   textureSampler <- withTextureSampler phys device
   textureShaderRes <- Lib.withTextureShaderStages device
@@ -280,7 +280,7 @@ someFunc = runResourceT $ do
   let texUniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
         , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
-        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*1) (500/2*1) 0) (axisAngle (V3 0 0 1) (0/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
+        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (150/2*1) (100/2*1) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
         }
   (texUniformBuffer, texUniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
@@ -300,7 +300,7 @@ someFunc = runResourceT $ do
           } :: DescriptorBufferInfo
         ]
 
-  let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 255) $ fill $ rectangle (V2 0 0) 200 100
+  let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 100) $ fill $ rectangle (V2 0 0) 200 100
   (textureStagingBuffer, textureStagingBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ (sizeOf . VS.head $ imageData pixels) * VS.length (imageData pixels)
     , usage = BUFFER_USAGE_TRANSFER_SRC_BIT
@@ -347,7 +347,7 @@ someFunc = runResourceT $ do
   textureImageView <- Lib.withImageView device textureFormat textureImage
   updateDescriptorSets device
     [ SomeStruct $ zero
-      { dstSet = descriptorSets textureDescriptorSetResource ! 0
+      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 0
       , dstBinding = 0
       , dstArrayElement = 0
       , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
@@ -357,7 +357,7 @@ someFunc = runResourceT $ do
       , texelBufferView = []
       }
     , SomeStruct $ zero
-      { dstSet = descriptorSets textureDescriptorSetResource ! 0
+      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 0
       , dstBinding = 1
       , dstArrayElement = 0
       , descriptorType = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
@@ -371,7 +371,9 @@ someFunc = runResourceT $ do
         ]
       }
     ] []
-  mapM_ (submitCommand (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) extent renderPass [texCoordsBuffer] texIndexBuffer (descriptorSets textureDescriptorSetResource) (fromIntegral . VS.length $ texIndices)) (V.zip commandBuffers framebuffers)
+
+  let texturePresent = Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices)
+  mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
   SyncResource {..} <- withSyncResource device framebuffers
 
@@ -607,7 +609,6 @@ withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
     , commandBufferCount = 1
     } allocate
-  liftIO . print $ commandBufferHandle commandBuffer
   liftIO $ useCommandBuffer commandBuffer zero
     { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
     } (f commandBuffer)
@@ -1012,7 +1013,13 @@ withPipeline device renderPass ShaderResource {..} = do
         , attachments =
           [ zero
             { colorWriteMask = COLOR_COMPONENT_R_BIT .|. COLOR_COMPONENT_G_BIT .|. COLOR_COMPONENT_B_BIT .|. COLOR_COMPONENT_A_BIT
-            , blendEnable = False
+            , blendEnable = True
+            , srcColorBlendFactor = BLEND_FACTOR_SRC_ALPHA
+            , dstColorBlendFactor = BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
+            , colorBlendOp = BLEND_OP_ADD
+            , srcAlphaBlendFactor = BLEND_FACTOR_ONE
+            , dstAlphaBlendFactor = BLEND_FACTOR_ZERO
+            , alphaBlendOp = BLEND_OP_ADD
             } ] }
       , dynamicState = Just $ zero
         { dynamicStates =
@@ -1088,19 +1095,39 @@ withCommandBuffers device commandPool framebuffers = do
     } allocate
   pure commandBuffers
 
-submitCommand :: Pipeline -> PipelineLayout
-              -> "renderArea" ::: Extent2D -> RenderPass
-              -> "vertexBuffers" ::: V.Vector Buffer
-              -> "indexBuffer" ::: Buffer
-              -> "descriptorSets" ::: V.Vector DescriptorSet
-              -> "drawSize" ::: Word32
+data Present = Present
+  { pipeline :: !Pipeline
+  , pipelineLayout :: !PipelineLayout
+  , vertexBuffers :: !(V.Vector Buffer)
+  , indexBuffer :: !Buffer
+  , descriptorSets :: !(V.Vector DescriptorSet)
+  , drawSize :: !Word32
+  }
+
+submitCommand :: "renderArea" ::: Extent2D -> RenderPass
+              -> V.Vector Present
               -> (CommandBuffer, Framebuffer)
               -> Managed ()
-submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuffers indexBuffer descriptorSets drawSize (commandBuffer, framebuffer) = do
-  useCommandBuffer commandBuffer zero -- do
+submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
+  let viewports =
+        [ Viewport
+          { x = 0
+          , y = 0
+          , width = fromIntegral width
+          , height = fromIntegral height
+          , minDepth = 0
+          , maxDepth = 1
+          }
+        ] :: V.Vector Viewport
+  let scissors =
+        [ Rect2D
+          { offset = Offset2D 0 0
+          , extent = extent
+          }
+        ] :: V.Vector Rect2D
+  liftIO $ useCommandBuffer commandBuffer zero -- do
     { flags = COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT --COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    } $ do
-    cmdUseRenderPass commandBuffer zero
+    } $ cmdUseRenderPass commandBuffer zero
       { renderPass = renderPass
       , framebuffer = framebuffer
       , renderArea = Rect2D
@@ -1108,32 +1135,19 @@ submitCommand pipeline pipelineLayout extent@Extent2D {..} renderPass vertexBuff
         , extent = extent
         }
       , clearValues = [ Color $ Float32 1 1 1 1 ]
-      } SUBPASS_CONTENTS_INLINE $ do
-        cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
-        let offsets = const 0 <$> vertexBuffers
-        let viewports =
-              [ Viewport
-                { x = 0
-                , y = 0
-                , width = fromIntegral width
-                , height = fromIntegral height
-                , minDepth = 0
-                , maxDepth = 1
-                }
-              ]
-        let scissors =
-              [ Rect2D
-                { offset = Offset2D 0 0
-                , extent = extent
-                }
-              ]
-        cmdSetViewport commandBuffer 0 viewports
-        cmdSetScissor commandBuffer 0 scissors
-        cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
-        cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
-        cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
-        cmdDrawIndexed commandBuffer drawSize 1 0 0 0
-        --cmdDraw commandBuffer 3 1 0 0
+      } SUBPASS_CONTENTS_INLINE $ mapM_ (presentCmd viewports scissors) presents
+  where
+    presentCmd :: V.Vector Viewport -> V.Vector Rect2D -> Present -> IO ()
+    presentCmd viewports scissors Present {..} = do
+      cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipeline
+      let offsets = const 0 <$> vertexBuffers
+      cmdSetViewport commandBuffer 0 viewports
+      cmdSetScissor commandBuffer 0 scissors
+      cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
+      cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
+      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
+      cmdDrawIndexed commandBuffer drawSize 1 0 0 0
+      --cmdDraw commandBuffer drawSize 1 0 0
 
 data SyncResource = SyncResource
   { imageAvailableSemaphores :: V.Vector Semaphore
