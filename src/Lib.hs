@@ -169,16 +169,15 @@ someFunc = runResourceT $ do
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
   QueueResource {..} <- getQueueResource device qIndices
+  liftIO $ print $ queueHandle graphicsQueue
+  liftIO $ print $ queueHandle presentQueue
+  liftIO $ print $ queueHandle transferQueue
   CommandPoolResource {..} <- withCommandPoolResource device qIndices
   swapchainRes@SwapchainResource {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
   shaderRes <- withShaderStages device
   pipelineResource <- Lib.withPipeline device renderPass shaderRes
-  -- (_, commandPool) <- withCommandPool device zero
-  --   { queueFamilyIndex = graphicsFamily qIndices
-  --   , flags = zeroBits
-  --   } Nothing allocate
   commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
-  
+  liftIO $ print $ V.map commandBufferHandle commandBuffers
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
     { Vma.flags = Vma.ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT -- vmaGetBudget
@@ -319,30 +318,32 @@ someFunc = runResourceT $ do
     , format = textureFormat
     , tiling = IMAGE_TILING_OPTIMAL
     , initialLayout = IMAGE_LAYOUT_UNDEFINED
-    , usage = IMAGE_USAGE_SAMPLED_BIT
+    , usage = IMAGE_USAGE_TRANSFER_DST_BIT .|. IMAGE_USAGE_SAMPLED_BIT -- when use staging buffer, VK_IMAGE_USAGE_TRANSFER_DST_BIT is necessary. VUID-VkImageMemoryBarrier-oldLayout-01213
     , samples = SAMPLE_COUNT_1_BIT
     , sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
     } allocate
-  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-  -- transitionImageLayout (commandBuffers!0) textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> cmdCopyBufferToImage cb textureStagingBuffer textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-    [ zero
-      { bufferOffset = 0
-      , bufferRowLength = 0
-      , bufferImageHeight = 0
-      , imageSubresource =  zero
-        { aspectMask = IMAGE_ASPECT_COLOR_BIT
-        , mipLevel = 0
-        , baseArrayLayer = 0
-        , layerCount = 1
-        }
-      , imageOffset = Offset3D 0 0 0
-      , imageExtent = Extent3D (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) 1
-      } :: BufferImageCopy
-    ]
-  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+
+  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> do
+    transitionImageLayout cb textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    cmdCopyBufferToImage cb textureStagingBuffer textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+      [ zero
+        { bufferOffset = 0
+        , bufferRowLength = 0
+        , bufferImageHeight = 0
+        , imageSubresource =  zero
+          { aspectMask = IMAGE_ASPECT_COLOR_BIT
+          , mipLevel = 0
+          , baseArrayLayer = 0
+          , layerCount = 1
+          }
+        , imageOffset = Offset3D 0 0 0
+        , imageExtent = Extent3D (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) 1
+        } :: BufferImageCopy
+      ]
+    transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+
   textureImageView <- Lib.withImageView device textureFormat textureImage
   updateDescriptorSets device
     [ SomeStruct $ zero
@@ -595,22 +596,22 @@ withCommandPoolResource device QueueFamilyIndices {..} = do
     } Nothing allocate
   transferCommandPool <- snd <$> withCommandPool device zero
     { queueFamilyIndex = transferFamily
-    , flags = zeroBits
+    , flags = COMMAND_POOL_CREATE_TRANSIENT_BIT
     } Nothing allocate
   pure CommandPoolResource {..}
 
-withSingleTimeCommands :: Device -> CommandPool -> Queue -> (CommandBuffer -> IO ()) -> Managed ()
-withSingleTimeCommands device commandPool queue f = do
+withSingleTimeCommands :: MonadIO m => Device -> CommandPool -> Queue -> (CommandBuffer -> IO ()) -> m ()
+withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
   commandBuffer <- V.head . snd <$> Vulkan.withCommandBuffers device zero
     { commandPool = commandPool
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
     , commandBufferCount = 1
     } allocate
-  _ <- liftIO $ useCommandBuffer commandBuffer zero
-    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    } (liftIO $ f commandBuffer)
-  fence <- snd <$> withFence device zero Nothing allocate
   liftIO . print $ commandBufferHandle commandBuffer
+  liftIO $ useCommandBuffer commandBuffer zero
+    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    } (f commandBuffer)
+  fence <- snd <$> withFence device zero Nothing allocate
   queueSubmit queue
     [ SomeStruct (zero
       { commandBuffers = [ commandBufferHandle commandBuffer ]
@@ -1048,7 +1049,7 @@ withTextureSampler phys device = do
     } Nothing allocate
 
 transitionImageLayout :: MonadIO m => CommandBuffer -> Image -> "oldLayout" ::: ImageLayout -> "newLayout" ::: ImageLayout -> m ()
-transitionImageLayout commandBuffer image oldLayout newLayout = useCommandBuffer commandBuffer zero { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT } $ do
+transitionImageLayout commandBuffer image oldLayout newLayout = do
   barrier <- pure (zero
     { oldLayout = oldLayout
     , newLayout = newLayout
@@ -1071,7 +1072,7 @@ transitionImageLayout commandBuffer image oldLayout newLayout = useCommandBuffer
         , dstAccessMask = ACCESS_TRANSFER_WRITE_BIT
         } :: ImageMemoryBarrier '[]) ]
     (IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) ->
-      cmdPipelineBarrier commandBuffer PIPELINE_STAGE_TOP_OF_PIPE_BIT PIPELINE_STAGE_TRANSFER_BIT zero [] []
+      cmdPipelineBarrier commandBuffer PIPELINE_STAGE_TRANSFER_BIT PIPELINE_STAGE_FRAGMENT_SHADER_BIT zero [] []
       [ SomeStruct (barrier
         { srcAccessMask = ACCESS_TRANSFER_WRITE_BIT
         , dstAccessMask = ACCESS_SHADER_READ_BIT
