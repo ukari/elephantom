@@ -389,31 +389,39 @@ data Frame = Frame
   , presentQueue :: Queue
   , imageAvailableSemaphores :: V.Vector Semaphore
   , renderFinishedSemaphores :: V.Vector Semaphore
+  , submitFinishedFences :: V.Vector Fence
   , commandBuffers :: V.Vector CommandBuffer
   , sync :: Int
   }
 
 drawFrame :: (MonadIO m) => Frame -> m (Maybe Frame)
 drawFrame x@Frame {..} = do
+  let commandBuffer = commandBuffers ! sync
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
+  let renderFinishedSemaphore = renderFinishedSemaphores ! sync
+  let fence = submitFinishedFences ! sync
+  _ <- waitForFencesSafe device [ fence ] True maxBound
+  resetFences device [ fence ]
   imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
   --liftIO $ print imageIndex
   queueSubmit graphicsQueue
     [ SomeStruct $ zero
-      { Core10.waitSemaphores = [ imageAvailableSemaphores ! sync ]
+      { Core10.waitSemaphores = [ imageAvailableSemaphore ]
       , waitDstStageMask = [ PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ]
-      , commandBuffers = [ commandBufferHandle (commandBuffers ! fromIntegral imageIndex) ]
-      , signalSemaphores = [ renderFinishedSemaphores ! sync ]
+      , commandBuffers = [ commandBufferHandle commandBuffer ]
+      , signalSemaphores = [ renderFinishedSemaphore ]
       }
-    ] zero
+    ] fence
   _ <- queuePresentKHR presentQueue zero
-    { Swap.waitSemaphores = [ renderFinishedSemaphores ! sync ]
+    { Swap.waitSemaphores = [ renderFinishedSemaphore ]
     , swapchains = [ swapchain ]
     , imageIndices = [ imageIndex ]
     }
-  queueWaitIdle presentQueue
-  queueWaitIdle graphicsQueue
-  pure . Just $ x {sync = (sync + 1) `mod` (fromIntegral . length $ commandBuffers)}
+  -- queueWaitIdle presentQueue
+  -- queueWaitIdle graphicsQueue
+  pure . Just $ x
+    { sync = (sync + 1) `mod` (fromIntegral . length $ commandBuffers)
+    }
 
 type Managed a = forall m . MonadResource m => m a
 
@@ -1150,17 +1158,20 @@ submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuff
       --cmdDraw commandBuffer drawSize 1 0 0
 
 data SyncResource = SyncResource
-  { imageAvailableSemaphores :: V.Vector Semaphore
-  , renderFinishedSemaphores :: V.Vector Semaphore
+  { imageAvailableSemaphores :: !(V.Vector Semaphore)
+  , renderFinishedSemaphores :: !(V.Vector Semaphore)
+  , submitFinishedFences :: !(V.Vector Fence)
   }
 
 withSyncResource :: Device -> V.Vector Framebuffer -> Managed SyncResource
 withSyncResource device framebuffers = do
   imageAvailableSemaphores <- mapM (const makeSemaphore) framebuffers
   renderFinishedSemaphores <- mapM (const makeSemaphore) framebuffers
+  submitFinishedFences <- mapM (const makeFence) framebuffers
   pure $ SyncResource {..}
   where
     makeSemaphore = snd <$> withSemaphore device zero Nothing allocate
+    makeFence = snd <$> withFence device zero { flags = FENCE_CREATE_SIGNALED_BIT } Nothing allocate
 
 memCopy :: forall a . Storable a => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> Managed ()
 memCopy allocator memAllocation datas = do
