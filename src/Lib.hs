@@ -83,7 +83,7 @@ import Control.Monad.Trans.Resource (MonadResource, ResourceT, runResourceT, all
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Error.Util (hoistMaybe, failWith)
-import Control.Exception (Exception (..), throw)
+import Control.Exception (Exception (..), throw, handleJust)
 import Control.Concurrent (forkIO, forkOS)
 
 import Shader
@@ -173,7 +173,12 @@ someFunc = runResourceT $ do
   liftIO $ print $ queueHandle presentQueue
   liftIO $ print $ queueHandle transferQueue
   commandPoolRes@CommandPoolResource {..} <- withCommandPoolResource device qIndices
-  swapchainRes@SwapchainResource {..} <- withSwapchain phys surf device queueFamilyIndices (Extent2D 500 500)
+  formats <- snd <$> getPhysicalDeviceSurfaceFormatsKHR phys surf
+  let surfaceFormat = formats ! 0
+  renderPass <- Lib.withRenderPass device surfaceFormat
+  V2 width height <- SDL.vkGetDrawableSize window
+  let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
   commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
   liftIO $ print $ V.map commandBufferHandle commandBuffers
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
@@ -641,23 +646,17 @@ withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
 
 data SwapchainResource = SwapchainResource
   { swapchain :: SwapchainKHR
-  , surfaceFormat :: SurfaceFormatKHR
-  , extent :: Extent2D
   , images :: V.Vector Image
   , imageViews :: V.Vector ImageView
   , framebuffers :: V.Vector Framebuffer
-  , renderPass :: RenderPass
   }
 
 chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode
 chooseSharingMode indices | length indices == 1 = SHARING_MODE_EXCLUSIVE
                           | otherwise = SHARING_MODE_CONCURRENT
 
-withSwapchain :: PhysicalDevice -> SurfaceKHR -> Device -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> Managed SwapchainResource
-withSwapchain phys surf device indices extent = do
-  (_, formats) <- getPhysicalDeviceSurfaceFormatsKHR phys surf
-  let surfaceFormat = formats ! 0
-  liftIO $ print formats
+withSwapchain :: PhysicalDevice-> Device -> SurfaceKHR -> SurfaceFormatKHR ->  "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> RenderPass -> SwapchainKHR -> Managed SwapchainResource
+withSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapchain = do
   (_, presentModes) <- getPhysicalDeviceSurfacePresentModesKHR phys surf
   liftIO $ print presentModes
   let presentMode = tryWith PRESENT_MODE_FIFO_KHR (V.find (== PRESENT_MODE_MAILBOX_KHR) presentModes)
@@ -678,12 +677,11 @@ withSwapchain phys surf device indices extent = do
         , compositeAlpha = COMPOSITE_ALPHA_OPAQUE_BIT_KHR
         , presentMode = presentMode
         , clipped = True
-        , oldSwapchain = NULL_HANDLE
+        , oldSwapchain = oldSwapchain
         }
   swapchain <- snd <$> withSwapchainKHR device swapchainCreateInfo Nothing allocate
   images <- snd <$> getSwapchainImagesKHR device swapchain
   imageViews <- mapM (Lib.withImageView device (format (surfaceFormat :: SurfaceFormatKHR))) images
-  renderPass <- Lib.withRenderPass device surfaceFormat
   framebuffers <- mapM (Lib.withFramebuffer device extent renderPass) imageViews
   pure SwapchainResource {..}
 
