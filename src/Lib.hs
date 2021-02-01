@@ -262,9 +262,9 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU--GPU_ONLY
     } allocate
   let vertices =
-        [ ShaderInputVertex (V2 250 125) (V3 (102/255) (53/255) (53/255))
-        , ShaderInputVertex (V2 375 (375)) (V3 (53/255) (102/255) (53/255))
-        , ShaderInputVertex (V2 (125) (375)) (V3 (53/255) (53/255) (102/255))
+        [ ShaderInputVertex (V2 250 125) (V4 (102/255) (53/255) (53/255) 1)
+        , ShaderInputVertex (V2 375 (375)) (V4 (53/255) (102/255) (53/255) 1)
+        , ShaderInputVertex (V2 (125) (375)) (V4 (53/255) (53/255) (102/255) 1)
         ] :: VS.Vector ShaderInputVertex
   liftIO . runResourceT $ memCopy allocator vertexBufferAllocation vertices -- early free
 
@@ -320,10 +320,10 @@ loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..
   textureSampler <- withTextureSampler phys device
   textureDescriptorSetResource <- withDescriptorSetResource device frameSize textureShaderRes (descriptorSetLayoutCreateInfos textureShaderRes ! 0)
   let texCoords =
-        [ Texture (V2 50 50) (V3 0 0 0) (V2 0 0)
-        , Texture (V2 250 50) (V3 0 0 0) (V2 1 0)
-        , Texture (V2 250 150) (V3 0 0 0) (V2 1 1)
-        , Texture (V2 50 150) (V3 0 0 0) (V2 0 1)
+        [ Texture (V2 50 50) (V4 0 0 0 1) (V2 0 0)
+        , Texture (V2 250 50) (V4 0 0 0 1) (V2 1 0)
+        , Texture (V2 250 150) (V4 0 0 0 1) (V2 1 1)
+        , Texture (V2 50 150) (V4 0 0 0 1) (V2 0 1)
         ] :: VS.Vector Texture
   (texCoordsBuffer, texCoordsBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ sizeOf (texCoords VS.! 0) * VS.length texCoords
@@ -728,9 +728,9 @@ withShaderStages device = do
   } ubo;
 
   layout(location = 0) in vec2 inPosition;
-  layout(location = 1) in vec3 inColor;
+  layout(location = 1) in vec4 inColor;
 
-  layout(location = 0) out vec3 fragColor;
+  layout(location = 0) out vec4 fragColor;
 
   void main() {
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
@@ -743,12 +743,12 @@ withShaderStages device = do
 
   #extension GL_ARB_separate_shader_objects : enable
 
-  layout(location = 0) in vec3 fragColor;
+  layout(location = 0) in vec4 fragColor;
 
   layout(location = 0) out vec4 outColor; 
 
   void main() {
-    outColor = vec4(fragColor, 1.0);
+    outColor = fragColor;
   }
   |]
   (_, vertShaderStage) <- withShaderModule device zero { code = vertCode } Nothing allocate
@@ -800,7 +800,7 @@ withShaderStages device = do
             { binding = 0
             , location = 1
             , offset = offsetof (undefined :: ShaderInputVertex) ("inColor" :: String)
-            , format = FORMAT_R32G32B32_SFLOAT
+            , format = FORMAT_R32G32B32A32_SFLOAT
             }
           ]
         }
@@ -819,10 +819,10 @@ withTextureShaderStages device = do
   } ubo;
 
   layout(location = 0) in vec2 position;
-  layout(location = 1) in vec3 color;
+  layout(location = 1) in vec4 color;
   layout(location = 2) in vec2 texCoord;
 
-  layout(location = 0) out vec3 fragColor;
+  layout(location = 0) out vec4 fragColor;
   layout(location = 1) out vec2 fragTexCoord;
 
   void main() {
@@ -838,7 +838,7 @@ withTextureShaderStages device = do
 
   layout(binding = 1) uniform sampler2D texSampler;
 
-  layout(location = 0) in vec3 fragColor;
+  layout(location = 0) in vec4 fragColor;
   layout(location = 1) in vec2 fragTexCoord;
 
   layout(location = 0) out vec4 outColor;
@@ -901,7 +901,7 @@ withTextureShaderStages device = do
             { binding = 0
             , location = 1
             , offset = offsetof (undefined :: Texture) ("color" :: String)
-            , format = FORMAT_R32G32B32_SFLOAT
+            , format = FORMAT_R32G32B32A32_SFLOAT
             }
           , zero
             { binding = 0

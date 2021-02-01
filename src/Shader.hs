@@ -10,14 +10,14 @@ module Shader
   where
 
 import GHC.Generics (Generic)
-import Linear (V2 (..), V3 (..), M44)
+import Linear (V2 (..), V4 (..), M44)
 import Foreign.Storable.Generic (GStorable)
 
 import Offset
 
 data ShaderInputVertex = ShaderInputVertex
   { inPosition :: !(V2 Float)
-  , inColor :: !(V3 Float)
+  , inColor :: !(V4 Float)
   } deriving (Generic, GStorable)
 
 makeOffset ''ShaderInputVertex
@@ -32,7 +32,7 @@ makeOffset ''ShaderUniform
 
 data Texture = Texture
   { position :: !(V2 Float)
-  , color :: !(V3 Float)
+  , color :: !(V4 Float)
   , texCoord :: !(V2 Float)
   } deriving (Generic, GStorable)
 
