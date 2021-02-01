@@ -203,12 +203,11 @@ someFunc = runResourceT $ do
 
   let fps = 1
   let sync = 0
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ Frame {..}
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (Frame {..}, swapchainRes)
   return undefined
 
 data Frame = Frame
   { device :: Device
-  , swapchain :: SwapchainKHR
   , graphicsQueue :: Queue
   , presentQueue :: Queue
   , imageAvailableSemaphores :: V.Vector Semaphore
@@ -219,8 +218,8 @@ data Frame = Frame
   , sync :: Int
   }
 
-drawFrame :: (MonadIO m) => Frame -> m (Maybe Frame)
-drawFrame x@Frame {..} = do
+drawFrame :: (MonadIO m) => (Frame, SwapchainResource) -> m (Maybe (Frame, SwapchainResource))
+drawFrame (x@Frame {..}, s@SwapchainResource {..}) = do
   let commandBuffer = commandBuffers ! sync
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync
@@ -244,9 +243,12 @@ drawFrame x@Frame {..} = do
     }
   -- queueWaitIdle presentQueue
   -- queueWaitIdle graphicsQueue
-  pure . Just $ x
-    { sync = (sync + 1) `mod` (fromIntegral frameSize)
-    }
+  pure . Just $
+    ( x
+      { sync = (sync + 1) `mod` fromIntegral frameSize
+      }
+    , s
+    )
 
 loadTriangle :: Vma.Allocator -> Device -> V.Vector Word32 -> Word32 -> ShaderResource -> PipelineResource -> Managed Present
 loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes = do
