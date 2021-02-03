@@ -28,7 +28,9 @@ import Control.Exception (Exception)
 import Control.Error.Util (hoistEither, failWith)
 
 -- https://www.khronos.org/opengl/wiki/Core_Language_(GLSL)
+-- https://github.com/KhronosGroup/GLSL/blob/master/extensions/khr/GL_KHR_vulkan_glsl.txt
 
+-- not support #define, #ifdef, #if, #else, #endif
 newtype Version = Version Text deriving (Show)
 
 data Directive
@@ -76,7 +78,6 @@ paramParser = do
   void spaces
   pargma <- manyTill anyChar endOfLine
   pure . Pragma . pack $ pargma
-
 
 sourceCodeParser :: Parser SourceCode
 sourceCodeParser = do
