@@ -30,6 +30,13 @@ packages:
   original:
     hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
 - completed:
+    hackage: language-glsl-0.3.0@sha256:85c1e7bf2cf5d6e604b7a2899c27e2935033425944db200798e57849e64d4c81,1636
+    pantry-tree:
+      size: 582
+      sha256: 64800d879b2d864171f72a7a717883540a0607d2d5ffb3be3378299fa80fdce5
+  original:
+    hackage: language-glsl-0.3.0@sha256:85c1e7bf2cf5d6e604b7a2899c27e2935033425944db200798e57849e64d4c81,1636
+- completed:
     hackage: VulkanMemoryAllocator-0.3.12@sha256:a4cbbb0fb4fb6221fb2911f6c26198a591b0cfe5f100f5df26a44e50da6f1e5f,2861
     pantry-tree:
       size: 524

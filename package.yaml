@@ -37,6 +37,9 @@ library:
   - text
   - bytestring
   - qm-interpolated-string
+  - recursion-schemes
+  - parsec
+  - language-glsl
   - sdl2
   - vulkan
   - vulkan-utils

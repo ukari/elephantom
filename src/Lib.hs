@@ -24,6 +24,8 @@ module Lib
 
 import qualified SDL as SDL
 import qualified SDL.Video.Vulkan as SDL
+import Text.InterpolatedString.QM (qnb)
+import Language.GLSL.Parser
 import Vulkan.Zero
 import Vulkan.CStruct.Extends
 import Vulkan hiding (allocate)
@@ -86,6 +88,7 @@ import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw, handleJust)
 import Control.Concurrent (forkIO, forkOS)
 
+import GLSL
 import Shader
 import Offset
 
@@ -488,6 +491,7 @@ withWindow title width height = do
     , SDL.windowBorder = False--True
     })
     SDL.destroyWindow
+  SDL.windowMinimumSize window SDL.$= SDL.V2 (fromIntegral width) (fromIntegral height)
   pure window
 
 withInst :: SDL.Window -> Managed Instance
