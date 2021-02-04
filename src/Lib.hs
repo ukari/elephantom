@@ -70,14 +70,15 @@ import qualified Data.Vector.Algorithms.Intro as V
 --import qualified Data.Set as Set
 import Data.Maybe (fromMaybe, isNothing, isJust)
 import Data.Bool (bool)
-import Data.List ((\\), group, sort)
+import Data.List ((\\), group, sort, sortOn, groupBy)
+import Data.Function (on)
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
 import qualified Streamly.Prelude as S
 import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
-import Control.Monad (join)
+import Control.Monad (liftM2, join)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 -- import Control.Monad.IO.Class
@@ -353,19 +354,34 @@ loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (150/2*1) (100/2*1) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
         }
   (texUniformBuffer, texUniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
-    { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
+    { size = fromIntegral $ 4 * sizeOf (undefined :: ShaderUniform)
     , usage = BUFFER_USAGE_UNIFORM_BUFFER_BIT -- .|. BUFFER_USAGE_TRANSFER_DST_BIT
     , sharingMode = chooseSharingMode queueFamilyIndices
     , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
     } allocate
-  liftIO . runResourceT $ memCopyU allocator texUniformBufferAllocation texUniform -- early free
+  liftIO . runResourceT $ memCopy allocator texUniformBufferAllocation (VS.fromList [texUniform, texUniform, texUniform, texUniform]) -- early free
   let texBufferInfos :: V.Vector DescriptorBufferInfo
       texBufferInfos =
         [ zero
           { buffer = texUniformBuffer
           , offset = 0
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        , zero
+          { buffer = texUniformBuffer
+          , offset = fromIntegral . (*1) . sizeOf $ (undefined :: ShaderUniform)
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        , zero
+          { buffer = texUniformBuffer
+          , offset = fromIntegral . (*2) . sizeOf $ (undefined :: ShaderUniform)
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        , zero
+          { buffer = texUniformBuffer
+          , offset = fromIntegral . (*3) . sizeOf $ (undefined :: ShaderUniform)
           , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
           } :: DescriptorBufferInfo
         ]
@@ -820,7 +836,7 @@ withTextureShaderStages device = do
     mat4 model;
     mat4 view;
     mat4 proj;
-  } ubo;
+  } ubo[4];
 
   layout(location = 0) in vec2 position;
   layout(location = 1) in vec4 color;
@@ -830,7 +846,7 @@ withTextureShaderStages device = do
   layout(location = 1) out vec2 fragTexCoord;
 
   void main() {
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 0.0, 1.0);
+    gl_Position = ubo[3].proj * ubo[3].view * ubo[3].model * vec4(position, 0.0, 1.0);
     fragColor = color;
     fragTexCoord = texCoord;
   }
@@ -870,9 +886,9 @@ withTextureShaderStages device = do
         [ zero
           { bindings =
             [ zero
-              { binding = 0
+              { binding = 0 -- arrays of uniforms and buffer blocks take only one binding number for the entire object, not one per array element https://github.com/KhronosGroup/GLSL/blob/ff13abf3e3d447e827ac5952bd2175881bbfcc4c/extensions/khr/GL_KHR_vulkan_glsl.txt#L91
               , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-              , descriptorCount = 1
+              , descriptorCount = 4 -- The first two fields specify the binding used in the shader and the type of descriptor, which is a uniform buffer object. It is possible for the shader variable to represent an array of uniform buffer objects, and descriptorCount specifies the number of values in the array. https://vulkan-tutorial.com/Uniform_buffers/Descriptor_layout_and_buffer
               , stageFlags = SHADER_STAGE_VERTEX_BIT
               }
             , zero
@@ -952,7 +968,13 @@ makeDescriptorPoolCreateInfo frameSize info = zero
   }
   where
     analyse :: DescriptorSetLayoutCreateInfo '[] -> [(DescriptorType, Int)]
-    analyse = map (head &&& length) . group . sort . map (descriptorType :: DescriptorSetLayoutBinding -> DescriptorType) . V.toList . bindings
+    analyse = map count . groupBy ((==) `on` fst) . sortOn fst . extract
+    extract :: DescriptorSetLayoutCreateInfo '[] -> [(DescriptorType, Int)]
+    extract = map (liftM2 (,) tname (fromIntegral . dcount)) . V.toList . bindings
+    count :: [(DescriptorType, Int)] -> (DescriptorType, Int)
+    count = liftM2 (,) (fst . head) (sum . (snd <$>))
+    tname = descriptorType :: DescriptorSetLayoutBinding -> DescriptorType
+    dcount = descriptorCount :: DescriptorSetLayoutBinding -> Word32
 
 withRenderPass :: Device -> SurfaceFormatKHR -> Managed RenderPass
 withRenderPass device surfFormat = do
