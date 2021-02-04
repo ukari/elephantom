@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: adaf744d2a80bf4c9868722c9782307500cc7dde311b84c48cd89a1f8494d3c6
+-- hash: d627698b3fd79eadf371b9812e183bbbd571f5cae62931f05f9ebf4cbf967373
 
 name:           elephantom
 version:        0.1.0.0
@@ -33,6 +33,7 @@ library
       Foreign.Storable.Offset.Internal.OffsetTH
       GLSL
       Language.GLSL.Compilation
+      Language.GLSL.Preprocess
       Lib
       Offset
       Shader
