@@ -22,7 +22,7 @@ module Lib
     ( someFunc
     ) where
 
-import qualified SDL as SDL
+import qualified SDL
 import qualified SDL.Video.Vulkan as SDL
 import Text.InterpolatedString.QM (qnb)
 import Language.GLSL.Parser
@@ -53,7 +53,7 @@ import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
 import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), Epsilon, transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, m33_to_m44, scaled)
 
-import qualified Linear as Linear
+import qualified Linear
 import Data.String (IsString)
 import Data.Word (Word32)
 import Data.Text (Text (..))
@@ -76,6 +76,7 @@ import Data.Function (on)
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
 import qualified Streamly.Prelude as S
+import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
 import Control.Monad (liftM2, join)
