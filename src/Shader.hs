@@ -179,7 +179,7 @@ test = globalConsts <$> (GLSL.parse . unpack $ testShaderStr)
 
 globalConsts' :: TranslationUnit -> ConstMap
 globalConsts' = \case
-  TranslationUnit xs -> toConstMap $ foldMap constExternalDeclaration xs
+  TranslationUnit xs -> foldMap constExternalDeclaration' xs
 
 constExternalDeclaration' :: ExternalDeclaration -> ConstMap
 constExternalDeclaration' = \case
