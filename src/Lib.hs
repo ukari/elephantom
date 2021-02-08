@@ -25,7 +25,6 @@ module Lib
 import qualified SDL
 import qualified SDL.Video.Vulkan as SDL
 import Text.InterpolatedString.QM (qnb)
-import Language.GLSL.Parser
 import Vulkan.Zero
 import Vulkan.CStruct.Extends
 import Vulkan hiding (allocate)

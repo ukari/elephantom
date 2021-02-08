@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ed467b5fddbf968711291f2abebc1bb8493125c9e1d8dc4d1c1e57c9d9d3ff29
+-- hash: 8885ffd936a1b1bfa69f7fe8ca7d787ef77c0ca905069bfed6131c44fa6d36e7
 
 name:           elephantom
 version:        0.1.0.0
@@ -57,7 +57,6 @@ library
     , fused-effects
     , gitrev
     , hspec
-    , language-glsl
     , linear
     , offset
     , parsec
