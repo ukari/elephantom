@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 84ccd506f5bafc13b4e28b971e65b919feccd17cf1f4d95f0a8ac4485df0333c
+-- hash: ed467b5fddbf968711291f2abebc1bb8493125c9e1d8dc4d1c1e57c9d9d3ff29
 
 name:           elephantom
 version:        0.1.0.0
@@ -53,6 +53,7 @@ library
     , containers
     , derive-storable
     , errors
+    , fir
     , fused-effects
     , gitrev
     , hspec

@@ -33,6 +33,7 @@ import Foreign.Storable.Generic (GStorable)
 import qualified Language.GLSL.Parser as GLSL
 import Language.GLSL.Syntax
 import Language.Haskell.TH.Syntax
+import qualified FIR
 
 import Data.Functor.Foldable (cata, para)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
@@ -112,52 +113,42 @@ foldMap makeBaseFunctor
 
 -- https://www.haskell.org/ghc/blog/20190728-free-variable-traversals.html
 type Const = (String, Int)
-type ConstMap = Map Const Expr
+--type ConstMap = Map Const Expr
 
 data ConstPrim
   = IntPrim Integer
   | FloatPrim Float
   | BoolPrim Bool
 
-type Consts = Map Const ConstPrim
+type ConstVals = Map Const ConstPrim
 type Context = Map Const Int
 
-newtype C = C
-  { runC :: Consts
-         -> Context
-         -> Context
-  }
-
--- newtype S = S
---   { runContext :: Context
---                -> ShaderInfo
---                -> ShaderInfo
---   }
-
-evalExpr :: ConstMap -> Expr -> ConstPrim
-evalExpr consts = \case
-  Variable var -> undefined
-
 newtype CV = CV
-  { runCV :: ConstMap -- acc
-          -> ConstMap -- result
+  { runCV :: ConstVals -- prim for lookup
+          -> Context -- acc
+          -> Context -- result for const int
   }
 
 instance Semigroup CV where
-  cv1 <> cv2 = CV $ \acc -> runCV cv1 (runCV cv2 acc)
+  cv1 <> cv2 = CV $ \cp acc -> runCV cv1 cp (runCV cv2 cp acc)
 
 instance Monoid CV where
-  mempty = CV id
+  mempty = CV $ \_cp _acc -> mempty
 
 bindConst :: Const -> Expr -> CV -> CV
-bindConst con expr cv = CV $ \acc -> runCV cv (insert con expr acc) 
+bindConst key expr cv = CV $ \cp acc ->
+  mempty
 
-toConstMap :: CV -> ConstMap
-toConstMap cv = runCV cv mempty
+toContext :: CV -> Context
+toContext cv = runCV cv mempty mempty
 
-globalConsts :: TranslationUnit -> ConstMap
+evalExpr :: Expr -> CV
+evalExpr = \case
+  Variable var -> undefined
+
+globalConsts :: TranslationUnit -> Context
 globalConsts = \case
-  TranslationUnit xs -> toConstMap $ foldMap constExternalDeclaration xs
+  TranslationUnit xs -> toContext $ foldMap constExternalDeclaration xs
 
 constExternalDeclaration :: ExternalDeclaration -> CV
 constExternalDeclaration = \case
@@ -176,30 +167,6 @@ constInitDeclarator = \case
   _ -> mempty
 
 test = globalConsts <$> (GLSL.parse . unpack $ testShaderStr)
-
-globalConsts' :: TranslationUnit -> ConstMap
-globalConsts' = \case
-  TranslationUnit xs -> foldMap constExternalDeclaration' xs
-
-constExternalDeclaration' :: ExternalDeclaration -> ConstMap
-constExternalDeclaration' = \case
-  Declaration decl -> constDeclaration' decl
-  _ -> mempty
-
-constDeclaration' :: Declaration -> ConstMap
-constDeclaration' = \case
-  InitDeclaration (TypeDeclarator (FullType (Just (TypeQualSto Const)) _)) decs -> foldMap constInitDeclarator' decs
-  _ -> mempty
-
-constInitDeclarator' :: InitDeclarator -> ConstMap
-constInitDeclarator' = \case
-  InitDecl name (Just (Just (IntConstant _ arr))) (Just expr) -> foldMap (\idx -> insert (name, idx) expr mempty) [0 .. (fromIntegral arr)]
-  InitDecl name _ (Just expr) -> insert (name, 0) expr mempty
-  _ -> mempty
-
-test' = globalConsts' <$> (GLSL.parse . unpack $ testShaderStr)
-
-
 
 interp :: TranslationUnit -> Int
 interp = cata $ \case
@@ -359,3 +326,4 @@ testShaderStr2 = [qnb|
     outColor = texture(texSampler, fragTexCoord); // for image use texSampler, for shape created by rasterfic use fragColor
   }
   |]
+
