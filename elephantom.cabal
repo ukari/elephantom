@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8885ffd936a1b1bfa69f7fe8ca7d787ef77c0ca905069bfed6131c44fa6d36e7
+-- hash: e713a0bc74694032d8f7795293d22c811e8c0feb9fff467ac8a8a588d950adea
 
 name:           elephantom
 version:        0.1.0.0
@@ -38,6 +38,7 @@ library
       Offset
       Orphan
       Shader
+      SpirV
   other-modules:
       Paths_elephantom
   hs-source-dirs:
@@ -53,7 +54,6 @@ library
     , containers
     , derive-storable
     , errors
-    , fir
     , fused-effects
     , gitrev
     , hspec

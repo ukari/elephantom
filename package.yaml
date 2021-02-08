@@ -39,7 +39,6 @@ library:
   - qm-interpolated-string
   - recursion-schemes
   - parsec
-  - fir
   - sdl2
   - vulkan
   - vulkan-utils
