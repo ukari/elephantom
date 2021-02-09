@@ -37,6 +37,10 @@ library:
   - text
   - bytestring
   - qm-interpolated-string
+  - filepath
+  - typed-process
+  - temporary-rc
+  - aeson
   - recursion-schemes
   - parsec
   - sdl2

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e713a0bc74694032d8f7795293d22c811e8c0feb9fff467ac8a8a588d950adea
+-- hash: 93724d175abdf01bf4040fd93d6cab01a42d0b92e3a56c5202d7737a63cab5b4
 
 name:           elephantom
 version:        0.1.0.0
@@ -49,11 +49,13 @@ library
     , JuicyPixels-repa
     , Rasterific
     , VulkanMemoryAllocator
+    , aeson
     , base >=4.7 && <5
     , bytestring
     , containers
     , derive-storable
     , errors
+    , filepath
     , fused-effects
     , gitrev
     , hspec
@@ -67,8 +69,10 @@ library
     , sdl2
     , streamly
     , template-haskell
+    , temporary-rc
     , text
     , transformers
+    , typed-process
     , vector
     , vector-algorithms
     , vulkan
