@@ -92,6 +92,7 @@ import Control.Concurrent (forkIO, forkOS)
 import GLSL
 import Shader
 import Offset
+import SpirV
 
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing

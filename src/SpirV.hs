@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -19,9 +20,11 @@ import Vulkan.NamedType ((:::))
 import Vulkan.Core10.Shader (ShaderModuleCreateInfo (..), ShaderModule (..))
 import Vulkan.Core10.Enums.Format (Format (..))
 import Vulkan.Core10.Enums.DescriptorType (DescriptorType (..))
+import Vulkan.Core10.Enums.VertexInputRate (VertexInputRate (..))
 import Vulkan.Core10.DescriptorSet (DescriptorSetLayoutBinding (..), DescriptorSetLayoutCreateInfo (..))
 import Vulkan.Core10.Pipeline (ShaderStageFlagBits (..), PipelineShaderStageCreateInfo (..), PipelineVertexInputStateCreateInfo (..),  VertexInputBindingDescription (..), VertexInputAttributeDescription (..))
 
+import Foreign.Storable (Storable (sizeOf, alignment))
 import GHC.Generics
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
@@ -38,7 +41,8 @@ import Data.List ((\\), group, sort, sortOn, groupBy)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Function (on)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
+import Data.Word (Word32)
 import Control.Applicative (liftA2)
 import Control.Monad (join, ap)
 
@@ -137,6 +141,7 @@ data ShaderStage
   | Tesc
   | Tese
   | Geom
+  deriving (Eq)
 
 instance IsString ShaderStage where
   fromString = \case
@@ -189,8 +194,8 @@ makeShaderInfo (Shader {..}, Reflection {..}) = do
 makeDescriptorInfo :: Vector (Shader, Reflection) -> Vector (DescriptorSetLayoutCreateInfo '[])
 makeDescriptorInfo = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd)
 
--- makeInputInfo :: Vector (Shader, Reflection) -> Maybe (PipelineVertexInputStateCreateInfo '[])
--- makeInputInfo
+makeInputInfo :: Vector (Shader, Reflection) -> Maybe (PipelineVertexInputStateCreateInfo '[])
+makeInputInfo = makePipelineVertexInputStateCreateInfo . join . V.fromList . catMaybes . (inputs . snd <$>) . filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst) . V.toList
 
 makeShaderModuleCreateInfo :: "code" ::: B.ByteString -> ShaderModuleCreateInfo '[]
 makeShaderModuleCreateInfo code = zero { code = code }
@@ -253,8 +258,69 @@ makeDescriptorSetLayoutCreateInfos bindings = do
 makeDescriptorSetLayoutCreateInfo :: Vector DescriptorSetLayoutBinding -> DescriptorSetLayoutCreateInfo '[]
 makeDescriptorSetLayoutCreateInfo bindings = zero { bindings = bindings }
 
-makePipelineVertexInputStateCreateInfos :: Vector Input -> Maybe (PipelineVertexInputStateCreateInfo '[])
-makePipelineVertexInputStateCreateInfos inputs = undefined
+data VertexAttributeType
+  = Vec2
+  | Vec3
+  | Vec4
+
+instance IsString VertexAttributeType where
+  fromString = \case
+    "vec2" -> Vec2
+    "vec3" -> Vec3
+    "vec4" -> Vec4
+    unsupport -> error $ "VertexAttributeType not support '" <> unsupport <> "'"
+
+instance Show VertexAttributeType where
+  show = \case
+    Vec2 -> "vec2"
+    Vec3 -> "vec3"
+    Vec4 -> "vec4"
+
+convertVertexAttributeType :: VertexAttributeType -> (Word32, Format)
+convertVertexAttributeType = \case
+  Vec2 -> (fromIntegral $ 2 * sizeOf (undefined :: Word32), FORMAT_R32G32_SFLOAT)
+  Vec3 -> (fromIntegral $ 3 * sizeOf (undefined :: Word32), FORMAT_R32G32B32_SFLOAT)
+  Vec4 -> (fromIntegral $ 4 * sizeOf (undefined :: Word32), FORMAT_R32G32B32A32_SFLOAT)
+
+-- only support single binding for input vertex
+-- [SaschaWillems - Multiple Vulkan buffer binding points](https://gist.github.com/SaschaWillems/428d15ed4b5d71ead462bc63adffa93a)
+-- maybe can provide a binding map parameter to specify individual binding by name, like `foo [(1, ["inPos", "inColor"]) (2, ["texCoord"])]` speficies that `(binding = 1) inPos, (binding = 1) inColor, (binding = 2) texCoord`
+makePipelineVertexInputStateCreateInfo :: Vector Input -> Maybe (PipelineVertexInputStateCreateInfo '[])
+makePipelineVertexInputStateCreateInfo [] = Nothing
+makePipelineVertexInputStateCreateInfo inputs = do
+  let vertexAttributeDescriptions = join . V.map makeVertexInputAttributeDescription $ inputs :: Vector VertexInputAttributeDescription
+  let vertexBindingDescriptions = makeVertexInputBindingDescriptions vertexAttributeDescriptions :: Vector VertexInputBindingDescription
+  Just zero
+    { vertexBindingDescriptions
+    , vertexAttributeDescriptions
+    }
+
+makeVertexInputBindingDescriptions :: Vector VertexInputAttributeDescription -> Vector VertexInputBindingDescription
+makeVertexInputBindingDescriptions = V.fromList . map makeVertexInputBindingDescription . calculate . groupBy ((==) `on` fst) . sortOn fst . extract
+  where
+    extract :: Vector VertexInputAttributeDescription -> [ ("binding" ::: Int, "offset" ::: Int) ]
+    extract = map ((,) . fromIntegral . (binding :: VertexInputAttributeDescription -> Word32) <*> fromIntegral . offset) . V.toList
+    calculate :: [ [ ("binding" ::: Int, "offset" ::: Int) ] ] -> [ ("binding" ::: Int, "stride" ::: Int) ]
+    calculate = map (liftA2 (,) (fst . head) (sum . (snd <$>)))
+
+makeVertexInputBindingDescription :: ("binding" ::: Int, "stride" ::: Int) -> VertexInputBindingDescription
+makeVertexInputBindingDescription (binding, stride) = zero
+  { binding = fromIntegral binding
+  , stride = fromIntegral stride
+  , inputRate = VERTEX_INPUT_RATE_VERTEX
+  }
+
+makeVertexInputAttributeDescription :: Input -> Vector VertexInputAttributeDescription
+makeVertexInputAttributeDescription Input {..} = do
+  let count = maybe 0 V.sum array :: Int
+  let (offset, format) = convertVertexAttributeType . fromString $ type'
+  V.map (\i -> zero
+    { binding = 0
+    , location = fromIntegral . (+ location) $ i
+    , offset
+    , format })
+    [ 0 .. count - 1
+    ]
 
 reflect :: MonadIO m => ShaderStage -> "code" ::: String -> m (BL.ByteString, BL.ByteString)
 reflect stage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
