@@ -972,9 +972,9 @@ makeDescriptorPoolCreateInfo frameSize info = zero
     analyse :: DescriptorSetLayoutCreateInfo '[] -> [(DescriptorType, Int)]
     analyse = map count . groupBy ((==) `on` fst) . sortOn fst . extract
     extract :: DescriptorSetLayoutCreateInfo '[] -> [(DescriptorType, Int)]
-    extract = map (liftM2 (,) tname (fromIntegral . dcount)) . V.toList . bindings
+    extract = map (liftA2 (,) tname (fromIntegral . dcount)) . V.toList . bindings
     count :: [(DescriptorType, Int)] -> (DescriptorType, Int)
-    count = liftM2 (,) (fst . head) (sum . (snd <$>))
+    count = liftA2 (,) (fst . head) (sum . (snd <$>))
     tname = descriptorType :: DescriptorSetLayoutBinding -> DescriptorType
     dcount = descriptorCount :: DescriptorSetLayoutBinding -> Word32
 
