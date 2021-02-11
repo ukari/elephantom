@@ -166,7 +166,7 @@ someFunc = runResourceT $ do
   inst <- withInst window
   surf <- withSurface inst window
   phys <- getPhysicalDevice inst
-  --liftIO . print =<< getPhysicalDeviceProperties phys
+  liftIO . print . maxBoundDescriptorSets . limits =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
   liftIO $ print qIndices
   let queueFamilyIndices = uniq . modify V.sort $ fmap ($ qIndices) [graphicsFamily, presentFamily, transferFamily]
@@ -296,7 +296,9 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
   liftIO . runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
-  descriptorSetResource <- withDescriptorSetResource device frameSize shaderRes (descriptorSetLayoutCreateInfos shaderRes ! 0)
+  descriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts shaderRes ! 2) (descriptorSetLayoutCreateInfos shaderRes ! 2)
+  liftIO . print $ descriptorSetLayoutCreateInfos shaderRes
+  liftIO . print $ descriptorSetResource
   let bufferInfos :: V.Vector DescriptorBufferInfo
       bufferInfos =
         [ zero
@@ -322,7 +324,7 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
 loadTexture :: Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> Managed Present
 loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..} CommandPoolResource {..}  textureShaderRes texturePipelineRes = do
   textureSampler <- withTextureSampler phys device
-  textureDescriptorSetResource <- withDescriptorSetResource device frameSize textureShaderRes (descriptorSetLayoutCreateInfos textureShaderRes ! 0)
+  textureDescriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts textureShaderRes ! 2) (descriptorSetLayoutCreateInfos textureShaderRes ! 2)
   let texCoords =
         [ Texture (V2 50 50) (V4 0 0 0 1) (V2 0 0)
         , Texture (V2 250 50) (V4 0 0 0 1) (V2 1 0)
@@ -741,7 +743,7 @@ withShaderStages device = do
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
 
-  layout(set = 0, binding = 0) uniform UniformBufferObject {
+  layout(set = 2, binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
@@ -787,7 +789,7 @@ withShaderStages device = do
         ]
   let descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
       descriptorSetLayoutCreateInfos =
-        [ zero
+        [ zero, zero, zero
           { bindings =
             [ zero
               { binding = 0
@@ -832,7 +834,7 @@ withTextureShaderStages device = do
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
 
-  layout(set = 0, binding = 0) uniform UniformBufferObject {
+  layout(set = 2, binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
@@ -856,7 +858,7 @@ withTextureShaderStages device = do
 
   #extension GL_ARB_separate_shader_objects : enable
 
-  layout(binding = 1) uniform sampler2D texSampler;
+  layout(set = 2, binding = 1) uniform sampler2D texSampler;
 
   layout(location = 0) in vec4 fragColor;
   layout(location = 1) in vec2 fragTexCoord;
@@ -883,7 +885,7 @@ withTextureShaderStages device = do
         ]
   let descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
       descriptorSetLayoutCreateInfos =
-        [ zero
+        [ zero, zero, zero
           { bindings =
             [ zero
               { binding = 0 -- arrays of uniforms and buffer blocks take only one binding number for the entire object, not one per array element https://github.com/KhronosGroup/GLSL/blob/ff13abf3e3d447e827ac5952bd2175881bbfcc4c/extensions/khr/GL_KHR_vulkan_glsl.txt#L91
@@ -942,8 +944,8 @@ data DescriptorSetResource = DescriptorSetResource
   , descriptorSets :: !(V.Vector DescriptorSet)
   } deriving (Show)
 
-withDescriptorSetResource :: Device -> Word32 -> ShaderResource -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
-withDescriptorSetResource device frameSize ShaderResource {..} descriptorSetLayoutCreateInfo = do
+withDescriptorSetResource :: Device -> Word32 -> DescriptorSetLayout -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
+withDescriptorSetResource device frameSize descriptorSetLayout descriptorSetLayoutCreateInfo = do
   -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
   -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
   -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
@@ -951,7 +953,7 @@ withDescriptorSetResource device frameSize ShaderResource {..} descriptorSetLayo
   descriptorPool <- snd <$> withDescriptorPool device descriptorPoolCreateInfo Nothing allocate
   descriptorSets <- snd <$> withDescriptorSets device zero
     { descriptorPool = descriptorPool
-    , setLayouts = descriptorSetLayouts
+    , setLayouts = [descriptorSetLayout]
     } allocate
   pure DescriptorSetResource {..}
 
@@ -1188,7 +1190,7 @@ submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuff
       cmdSetScissor commandBuffer 0 scissors
       cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
       cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
-      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
+      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 2 descriptorSets []
       cmdDrawIndexed commandBuffer drawSize 1 0 0 0
       --cmdDraw commandBuffer drawSize 1 0 0
 
