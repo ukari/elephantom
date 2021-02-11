@@ -11,7 +11,9 @@
 {-# LANGUAGE OverloadedLists #-}
 
 module SpirV
-  (
+  ( makeShaderInfo
+  , makeDescriptorInfo
+  , makeInputInfo
   ) where
 
 import Vulkan.Zero (zero)
