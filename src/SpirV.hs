@@ -324,7 +324,7 @@ makeVertexInputBindingDescription (binding, stride) = zero
 
 makeVertexInputAttributeDescription :: Input -> Vector VertexInputAttributeDescription
 makeVertexInputAttributeDescription Input {..} = do
-  let count = maybe 0 V.sum array :: Int
+  let count = maybe 1 V.sum array :: Int
   let (offset, format) = convertVertexAttributeType . fromString $ type'
   V.map (\i -> zero
     { binding = 0
