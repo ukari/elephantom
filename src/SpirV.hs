@@ -132,8 +132,15 @@ data Reflection = Reflection
 test :: MonadIO m => m (Maybe Reflection)
 test = decode . snd <$> reflect "vert" testVert
 
-test2 :: MonadIO m => m (Maybe Reflection)
-test2 = decode . snd <$> reflect "frag" testFrag
+test1 :: MonadIO m => m (Maybe Reflection)
+test1 = decode . snd <$> reflect "frag" testFrag
+
+test2 :: MonadIO m => m ()
+test2 =  do
+  vert <- reflection (fromString "vert") testVert
+  frag <- reflection (fromString "frag") testFrag
+  liftIO . print . shaderModuleCreateInfo . makeShaderInfo $ vert
+  liftIO . print . shaderModuleCreateInfo . makeShaderInfo $ frag
 
 test3 :: MonadIO m => m ()
 test3 = do
