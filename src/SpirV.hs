@@ -11,7 +11,8 @@
 {-# LANGUAGE OverloadedLists #-}
 
 module SpirV
-  ( makeShaderInfo
+  ( reflection
+  , makeShaderInfo
   , makeDescriptorInfo
   , makeInputInfo
   ) where
@@ -51,14 +52,14 @@ import Control.Monad (join, ap)
 data EntryPoint = EntryPoint
   { name :: String
   , mode :: String
-  } deriving (Generic, Show, FromJSON, ToJSON)
+  } deriving (Show, Generic, FromJSON, ToJSON)
 
 data Input = Input
   { type' :: String
   , name :: String
   , location :: Int
   , array :: Maybe (Vector Int)
-  } deriving (Generic, Show)
+  } deriving (Show, Generic)
 
 instance FromJSON Input where
   parseJSON = withObject "inputs" $ \v -> Input
@@ -86,7 +87,7 @@ data Ubo = Ubo
   , set :: Int
   , binding :: Int
   , array :: Maybe (Vector Int)
-  } deriving (Generic, Show, FromJSON, ToJSON)
+  } deriving (Show, Generic, FromJSON, ToJSON)
 
 data Texture = Texture
   { type' :: String
@@ -94,7 +95,7 @@ data Texture = Texture
   , set :: Int
   , binding :: Int
   , array :: Maybe (Vector Int)
-  } deriving (Generic, Show)
+  } deriving (Show, Generic)
 
 instance FromJSON Texture where
   parseJSON = withObject "textures" $ \v -> Texture
@@ -125,13 +126,19 @@ data Reflection = Reflection
   , inputs :: Maybe (Vector Input)
   , textures :: Maybe (Vector Texture)
   , ubos :: Maybe (Vector Ubo)
-  } deriving (Generic, Show, FromJSON, ToJSON)
+  } deriving (Show, Generic, FromJSON, ToJSON)
 
 test :: MonadIO m => m (Maybe Reflection)
 test = decode . snd <$> reflect "vert" testVert
 
 test2 :: MonadIO m => m (Maybe Reflection)
 test2 = decode . snd <$> reflect "frag" testFrag
+
+test3 :: MonadIO m => m String
+test3 = do
+  vert <- reflection (fromString "vert") testVert
+  frag <- reflection (fromString "frag") testFrag
+  pure . show . makeDescriptorInfo $ V.fromList [vert, frag]
 
 -- glslangValidator
 -- -S <stage>  uses specified stage rather than parsing the file extension
@@ -176,21 +183,17 @@ convertStage = \case
 data Shader = Shader
   { stage :: ShaderStage
   , code :: B.ByteString
-  }
+  } deriving (Show)
 
 data ShaderInfo = ShaderInfo
   { shaderModuleCreateInfo:: ShaderModuleCreateInfo '[]
   , pipelineShaderStageCreateInfos :: ShaderModule -> Vector (PipelineShaderStageCreateInfo '[])
-  -- , descriptorSetLayoutCreateInfos :: Vector (DescriptorSetLayoutCreateInfo '[])
-  -- , pipelineVertexInputStateCreateInfos :: Maybe (PipelineVertexInputStateCreateInfo '[])
   }
 
 makeShaderInfo :: (Shader, Reflection) -> ShaderInfo
 makeShaderInfo (Shader {..}, Reflection {..}) = do
   let shaderModuleCreateInfo = makeShaderModuleCreateInfo code
   let pipelineShaderStageCreateInfos = makePipelineShaderStageCreateInfos stage entryPoints
-  --let descriptorSetLayoutCreateInfos = makeDescriptorSetLayoutCreateInfos (makeDescriptorSetLayoutBindings stage (fromMaybe [] ubos) (fromMaybe [] textures))
-  --let pipelineVertexInputStateCreateInfos = makePipelineVertexInputStateCreateInfos (fromMaybe [] inputs)
   ShaderInfo {..}
 
 makeDescriptorInfo :: Vector (Shader, Reflection) -> Vector (DescriptorSetLayoutCreateInfo '[])
@@ -324,16 +327,23 @@ makeVertexInputAttributeDescription Input {..} = do
     [ 0 .. count - 1
     ]
 
-reflect :: MonadIO m => ShaderStage -> "code" ::: String -> m (BL.ByteString, BL.ByteString)
+reflect :: MonadIO m => ShaderStage -> "code" ::: String -> m (B.ByteString, BL.ByteString)
 reflect stage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   let shader = dir </> "test.vert"
   let spv = dir </> "vert.spv"
   writeFile shader code
   writeFile spv code
-  (exitCode, spirv, err) <- readProcess . proc "glslangValidator" $ [ "-S", show stage, "-V", shader, "-o", spv]
-  --print out
-  (exitCode, reflection, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
-  pure (spirv, reflection)
+  (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", show stage, "-V", shader, "-o", spv]
+  spirv <- B.readFile spv
+  (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
+  pure (spirv, reflectionRaw)
+
+reflection :: MonadIO m => ShaderStage -> "code" ::: String -> m (Shader, Reflection)
+reflection stage code = do
+  (spirv, reflectionRaw) <- reflect stage code
+  case decode reflectionRaw of
+    Just reflection -> pure (Shader {stage, code = spirv}, reflection)
+    Nothing -> error "fail to reflect"
 
 testVert :: String
 testVert = [qnb|
