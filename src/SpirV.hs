@@ -48,6 +48,7 @@ import Data.Maybe (fromMaybe, catMaybes)
 import Data.Word (Word32)
 import Control.Applicative (liftA2)
 import Control.Monad (join, ap)
+import Debug.Trace (traceShow)
 
 data EntryPoint = EntryPoint
   { name :: String
@@ -134,11 +135,17 @@ test = decode . snd <$> reflect "vert" testVert
 test2 :: MonadIO m => m (Maybe Reflection)
 test2 = decode . snd <$> reflect "frag" testFrag
 
-test3 :: MonadIO m => m String
+test3 :: MonadIO m => m ()
 test3 = do
   vert <- reflection (fromString "vert") testVert
   frag <- reflection (fromString "frag") testFrag
-  pure . show . makeDescriptorInfo $ V.fromList [vert, frag]
+  liftIO . print . makeDescriptorInfo $ V.fromList [vert, frag]
+
+test4 :: MonadIO m => m ()
+test4 = do
+  vert <- reflection (fromString "vert") testVert
+  frag <- reflection (fromString "frag") testFrag
+  liftIO . print . makeInputInfo $ V.fromList [vert, frag]
 
 -- glslangValidator
 -- -S <stage>  uses specified stage rather than parsing the file extension
@@ -258,7 +265,7 @@ makeDescriptorSetLayoutCreateInfos bindings = do
       sets = M.fromList . map (, []) $ [ 0 .. setSize ]
   let setsMap :: Map Int (Vector DescriptorSetLayoutBinding)
       setsMap = M.fromList . map (liftA2 (,) (fst . head) (V.fromList . (snd <$>))) . groupBy ((==) `on` fst) . sortOn fst . V.toList $ bindings
-  V.map makeDescriptorSetLayoutCreateInfo . V.fromList . M.elems . M.union sets $ setsMap
+  V.map makeDescriptorSetLayoutCreateInfo . V.fromList . M.elems . M.unionWith (V.++) sets $ setsMap
 
 makeDescriptorSetLayoutCreateInfo :: Vector DescriptorSetLayoutBinding -> DescriptorSetLayoutCreateInfo '[]
 makeDescriptorSetLayoutCreateInfo bindings = zero { bindings = bindings }
