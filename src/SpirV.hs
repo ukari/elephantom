@@ -294,25 +294,33 @@ convertVertexAttributeType = \case
   Vec3 -> (fromIntegral $ 3 * sizeOf (undefined :: Word32), FORMAT_R32G32B32_SFLOAT)
   Vec4 -> (fromIntegral $ 4 * sizeOf (undefined :: Word32), FORMAT_R32G32B32A32_SFLOAT)
 
+data VertexAttribute = VertexAttribute
+  { binding :: Word32
+  , location :: Word32
+  , size :: Word32
+  , format :: Format
+  } deriving (Show)
+
 -- only support single binding for input vertex
 -- [SaschaWillems - Multiple Vulkan buffer binding points](https://gist.github.com/SaschaWillems/428d15ed4b5d71ead462bc63adffa93a)
 -- maybe can provide a binding map parameter to specify individual binding by name, like `foo [(1, ["inPos", "inColor"]) (2, ["texCoord"])]` speficies that `(binding = 1) inPos, (binding = 1) inColor, (binding = 2) texCoord`
 makePipelineVertexInputStateCreateInfo :: Vector Input -> Maybe (PipelineVertexInputStateCreateInfo '[])
 makePipelineVertexInputStateCreateInfo [] = Nothing
 makePipelineVertexInputStateCreateInfo inputs = do
-  let vertexAttributeDescriptions = join . V.map makeVertexInputAttributeDescription $ inputs :: Vector VertexInputAttributeDescription
-  let vertexBindingDescriptions = makeVertexInputBindingDescriptions vertexAttributeDescriptions :: Vector VertexInputBindingDescription
+  let vertexAttributes = join . V.map makeVertexAttribute $ inputs :: Vector VertexAttribute
+  let vertexAttributeDescriptions = makeVertexInputAttributeDescriptions vertexAttributes :: Vector VertexInputAttributeDescription
+  let vertexBindingDescriptions = makeVertexInputBindingDescriptions vertexAttributes :: Vector VertexInputBindingDescription
   Just zero
     { vertexBindingDescriptions
     , vertexAttributeDescriptions
     }
 
-makeVertexInputBindingDescriptions :: Vector VertexInputAttributeDescription -> Vector VertexInputBindingDescription
+makeVertexInputBindingDescriptions :: Vector VertexAttribute -> Vector VertexInputBindingDescription
 makeVertexInputBindingDescriptions = V.fromList . map makeVertexInputBindingDescription . calculate . groupBy ((==) `on` fst) . sortOn fst . extract
   where
-    extract :: Vector VertexInputAttributeDescription -> [ ("binding" ::: Int, "offset" ::: Int) ]
-    extract = map ((,) . fromIntegral . (binding :: VertexInputAttributeDescription -> Word32) <*> fromIntegral . offset) . V.toList
-    calculate :: [ [ ("binding" ::: Int, "offset" ::: Int) ] ] -> [ ("binding" ::: Int, "stride" ::: Int) ]
+    extract :: Vector VertexAttribute -> [ ("binding" ::: Int, "size" ::: Int) ]
+    extract = map ((,) . fromIntegral . (binding :: VertexAttribute -> Word32) <*> fromIntegral . size) . V.toList
+    calculate :: [ [ ("binding" ::: Int, "size" ::: Int) ] ] -> [ ("binding" ::: Int, "stride" ::: Int) ]
     calculate = map (liftA2 (,) (fst . head) (sum . (snd <$>)))
 
 makeVertexInputBindingDescription :: ("binding" ::: Int, "stride" ::: Int) -> VertexInputBindingDescription
@@ -322,17 +330,31 @@ makeVertexInputBindingDescription (binding, stride) = zero
   , inputRate = VERTEX_INPUT_RATE_VERTEX
   }
 
-makeVertexInputAttributeDescription :: Input -> Vector VertexInputAttributeDescription
-makeVertexInputAttributeDescription Input {..} = do
+makeVertexAttribute :: Input -> Vector VertexAttribute
+makeVertexAttribute Input {..} = do
   let count = maybe 1 V.sum array :: Int
-  let (offset, format) = convertVertexAttributeType . fromString $ type'
-  V.map (\i -> zero
+  let (size, format) = convertVertexAttributeType . fromString $ type'
+  V.map (\i -> VertexAttribute
     { binding = 0
     , location = fromIntegral . (+ location) $ i
-    , offset
+    , size
     , format })
     [ 0 .. count - 1
     ]
+
+makeVertexInputAttributeDescriptions :: Vector VertexAttribute -> Vector VertexInputAttributeDescription
+makeVertexInputAttributeDescriptions = V.fromList . join . map process . groupBy ((==) `on` (binding :: VertexAttribute -> Word32)) . V.toList
+  where
+    process :: [ VertexAttribute ] -> [ VertexInputAttributeDescription ]
+    process = snd . foldl (\(nextOffset, acc) cur -> liftA2 (,) fst ((acc ++) . pure . snd) (makeVertexInputAttributeDescription nextOffset cur)) (0, [])
+
+makeVertexInputAttributeDescription :: Word32 -> VertexAttribute -> (Word32, VertexInputAttributeDescription)
+makeVertexInputAttributeDescription offset VertexAttribute {..} = (offset + size, zero
+  { binding
+  , location
+  , offset
+  , format
+  })
 
 reflect :: MonadIO m => ShaderStage -> "code" ::: String -> m (B.ByteString, BL.ByteString)
 reflect stage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
