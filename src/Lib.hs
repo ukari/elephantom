@@ -81,7 +81,6 @@ import Control.Applicative ((<|>), Applicative (..), optional)
 import Control.Monad (liftM2, join)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
--- import Control.Monad.IO.Class
 import Control.Monad.Trans.Resource (MonadResource, ResourceT, runResourceT, allocate, allocate_, release, register, liftResourceT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
