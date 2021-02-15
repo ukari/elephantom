@@ -12,6 +12,7 @@
 
 module SpirV
   ( reflection
+  , reflection'
   , makeShaderInfo
   , makeDescriptorInfo
   , makeInputInfo
@@ -375,9 +376,23 @@ reflect stage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
   pure (spirv, reflectionRaw)
 
+reflect' :: MonadIO m => "spirv" ::: B.ByteString -> m BL.ByteString
+reflect' spirv = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
+  let spv = dir </> "vert.spv"
+  B.writeFile spv spirv
+  (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
+  pure reflectionRaw
+
 reflection :: MonadIO m => ShaderStage -> "code" ::: String -> m (Shader, Reflection)
 reflection stage code = do
   (spirv, reflectionRaw) <- reflect stage code
+  case decode reflectionRaw of
+    Just reflection -> pure (Shader {stage, code = spirv}, reflection)
+    Nothing -> error "fail to reflect"
+
+reflection' :: MonadIO m => ShaderStage -> "spirv" ::: B.ByteString -> m (Shader, Reflection)
+reflection' stage spirv = do
+  reflectionRaw <- reflect' spirv
   case decode reflectionRaw of
     Just reflection -> pure (Shader {stage, code = spirv}, reflection)
     Nothing -> error "fail to reflect"
