@@ -11,7 +11,8 @@
 {-# LANGUAGE OverloadedLists #-}
 
 module SpirV
-  ( reflection
+  ( ShaderStage (..)
+  , reflection
   , reflection'
   , makeShaderInfo
   , makeDescriptorInfo
@@ -370,7 +371,6 @@ reflect stage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   let shader = dir </> "test.vert"
   let spv = dir </> "vert.spv"
   writeFile shader code
-  writeFile spv code
   (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", show stage, "-V", shader, "-o", spv]
   spirv <- B.readFile spv
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
