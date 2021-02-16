@@ -773,8 +773,8 @@ withShaderStages device = do
     outColor = fragColor;
   }
   |]
-  (_, vertShaderStage) <- withShaderModule device zero { code = vertCode } Nothing allocate
-  (_, fragShaderStage) <- withShaderModule device zero { code = fragCode } Nothing allocate
+  (_, vertShaderStage) <- Vulkan.withShaderModule device zero { code = vertCode } Nothing allocate
+  (_, fragShaderStage) <- Vulkan.withShaderModule device zero { code = fragCode } Nothing allocate
   let shaderStages =
         [ SomeStruct $ zero
           { stage = SHADER_STAGE_VERTEX_BIT
@@ -828,6 +828,19 @@ withShaderStages device = do
         }
   pure ShaderResource {..}
 
+withShaderModule :: Device -> ShaderInfo -> Managed ShaderModule
+withShaderModule device ShaderInfo {..} = snd <$> Vulkan.withShaderModule device shaderModuleCreateInfo Nothing allocate
+
+withShaders :: Device -> V.Vector ("spirv" ::: ByteString) -> Managed ShaderResource
+withShaders device spirvs = do
+  reflects <- V.mapM reflection' spirvs
+  let shaderInfos = makeShaderInfo <$> reflects
+  shaderStages <- (join <$>) . V.mapM (liftA2 (<$>) pipelineShaderStageCreateInfos (Lib.withShaderModule device)) $ shaderInfos
+  let descriptorSetLayoutCreateInfos = makeDescriptorInfo reflects
+  descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
+  let vertexInputState = makeInputInfo reflects
+  pure ShaderResource {..}
+
 withTextureShaderStages :: Device -> Managed ShaderResource
 withTextureShaderStages device = do
   let vertCode = [vert|
@@ -869,70 +882,75 @@ withTextureShaderStages device = do
     outColor = texture(texSampler, fragTexCoord); // for image use texSampler, for shape created by rasterfic use fragColor
   }
   |]
-  (_, vertShaderStage) <- withShaderModule device zero { code = vertCode } Nothing allocate
-  (_, fragShaderStage) <- withShaderModule device zero { code = fragCode } Nothing allocate
-  let shaderStages =
-        [ SomeStruct $ zero
-          { stage = SHADER_STAGE_VERTEX_BIT
-          , module' = vertShaderStage
-          , name = "main"
-          }
-        , SomeStruct $ zero
-          { stage = SHADER_STAGE_FRAGMENT_BIT
-          , module' = fragShaderStage
-          , name = "main"
-          }
-        ]
-  let descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
-      descriptorSetLayoutCreateInfos =
-        [ zero, zero, zero
-          { bindings =
-            [ zero
-              { binding = 0 -- arrays of uniforms and buffer blocks take only one binding number for the entire object, not one per array element https://github.com/KhronosGroup/GLSL/blob/ff13abf3e3d447e827ac5952bd2175881bbfcc4c/extensions/khr/GL_KHR_vulkan_glsl.txt#L91
-              , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-              , descriptorCount = 4 -- The first two fields specify the binding used in the shader and the type of descriptor, which is a uniform buffer object. It is possible for the shader variable to represent an array of uniform buffer objects, and descriptorCount specifies the number of values in the array. https://vulkan-tutorial.com/Uniform_buffers/Descriptor_layout_and_buffer
-              , stageFlags = SHADER_STAGE_VERTEX_BIT
-              }
-            , zero
-              { binding = 1
-              , descriptorType = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-              , descriptorCount = 1
-              , stageFlags = SHADER_STAGE_FRAGMENT_BIT
-              }
-            ]
-          }
-        ]
+  reflects <- V.mapM reflection' [ vertCode, fragCode ]
+  let shaderInfos = makeShaderInfo <$> reflects
+  shaderStages <- (join <$>) . V.mapM (liftA2 (<$>) pipelineShaderStageCreateInfos (Lib.withShaderModule device)) $ shaderInfos
+  -- (_, vertShaderStage) <- Vulkan.withShaderModule device zero { code = vertCode } Nothing allocate
+  -- (_, fragShaderStage) <- Vulkan.withShaderModule device zero { code = fragCode } Nothing allocate
+  -- let shaderStages =
+  --       [ SomeStruct $ zero
+  --         { stage = SHADER_STAGE_VERTEX_BIT
+  --         , module' = vertShaderStage
+  --         , name = "main"
+  --         }
+  --       , SomeStruct $ zero
+  --         { stage = SHADER_STAGE_FRAGMENT_BIT
+  --         , module' = fragShaderStage
+  --         , name = "main"
+  --         }
+  --       ]
+  let descriptorSetLayoutCreateInfos = makeDescriptorInfo reflects
+  -- let descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
+  --     descriptorSetLayoutCreateInfos =
+  --       [ zero, zero, zero
+  --         { bindings =
+  --           [ zero
+  --             { binding = 0 -- arrays of uniforms and buffer blocks take only one binding number for the entire object, not one per array element https://github.com/KhronosGroup/GLSL/blob/ff13abf3e3d447e827ac5952bd2175881bbfcc4c/extensions/khr/GL_KHR_vulkan_glsl.txt#L91
+  --             , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+  --             , descriptorCount = 4 -- The first two fields specify the binding used in the shader and the type of descriptor, which is a uniform buffer object. It is possible for the shader variable to represent an array of uniform buffer objects, and descriptorCount specifies the number of values in the array. https://vulkan-tutorial.com/Uniform_buffers/Descriptor_layout_and_buffer
+  --             , stageFlags = SHADER_STAGE_VERTEX_BIT
+  --             }
+  --           , zero
+  --             { binding = 1
+  --             , descriptorType = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  --             , descriptorCount = 1
+  --             , stageFlags = SHADER_STAGE_FRAGMENT_BIT
+  --             }
+  --           ]
+  --         }
+  --       ]
   descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
-  let vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
-      vertexInputState = Just $ SomeStruct $ zero
-        { vertexBindingDescriptions =
-          [ zero
-            { binding = 0
-            , stride = fromIntegral . sizeOf $ (undefined :: Texture)
-            , inputRate = VERTEX_INPUT_RATE_VERTEX
-            }
-          ]
-        , vertexAttributeDescriptions =
-          [ zero
-            { binding = 0
-            , location = 0
-            , offset = offsetof (undefined :: Texture) ("position" :: String)
-            , format = FORMAT_R32G32_SFLOAT
-            }
-          , zero
-            { binding = 0
-            , location = 1
-            , offset = offsetof (undefined :: Texture) ("color" :: String)
-            , format = FORMAT_R32G32B32A32_SFLOAT
-            }
-          , zero
-            { binding = 0
-            , location = 2
-            , offset = offsetof (undefined :: Texture) ("texCoord" :: String)
-            , format = FORMAT_R32G32B32_SFLOAT
-            }
-          ]
-        }
+  let vertexInputState = makeInputInfo reflects
+  -- let vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
+  --     vertexInputState = Just $ SomeStruct $ zero
+  --       { vertexBindingDescriptions =
+  --         [ zero
+  --           { binding = 0
+  --           , stride = fromIntegral . sizeOf $ (undefined :: Texture)
+  --           , inputRate = VERTEX_INPUT_RATE_VERTEX
+  --           }
+  --         ]
+  --       , vertexAttributeDescriptions =
+  --         [ zero
+  --           { binding = 0
+  --           , location = 0
+  --           , offset = offsetof (undefined :: Texture) ("position" :: String)
+  --           , format = FORMAT_R32G32_SFLOAT
+  --           }
+  --         , zero
+  --           { binding = 0
+  --           , location = 1
+  --           , offset = offsetof (undefined :: Texture) ("color" :: String)
+  --           , format = FORMAT_R32G32B32A32_SFLOAT
+  --           }
+  --         , zero
+  --           { binding = 0
+  --           , location = 2
+  --           , offset = offsetof (undefined :: Texture) ("texCoord" :: String)
+  --           , format = FORMAT_R32G32B32_SFLOAT
+  --           }
+  --         ]
+  --       }
   pure ShaderResource {..}
 
 withDescriptorSetLayout :: Device -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetLayout
