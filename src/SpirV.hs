@@ -12,6 +12,7 @@
 
 module SpirV
   ( ShaderStage (..)
+  , ShaderInfo (..)
   , reflection
   , reflection'
   , makeShaderInfo
@@ -203,13 +204,13 @@ data Shader = Shader
 
 data ShaderInfo = ShaderInfo
   { shaderModuleCreateInfo:: ShaderModuleCreateInfo '[]
-  , pipelineShaderStageCreateInfos :: ShaderModule -> Vector (PipelineShaderStageCreateInfo '[])
+  , pipelineShaderStageCreateInfos :: ShaderModule -> Vector (SomeStruct PipelineShaderStageCreateInfo)
   }
 
 makeShaderInfo :: (Shader, Reflection) -> ShaderInfo
 makeShaderInfo (Shader {..}, Reflection {..}) = do
   let shaderModuleCreateInfo = makeShaderModuleCreateInfo code
-  let pipelineShaderStageCreateInfos = makePipelineShaderStageCreateInfos stage entryPoints
+  let pipelineShaderStageCreateInfos = (SomeStruct <$>) . makePipelineShaderStageCreateInfos stage entryPoints
   ShaderInfo {..}
 
 makeDescriptorInfo :: Vector (Shader, Reflection) -> Vector (DescriptorSetLayoutCreateInfo '[])
