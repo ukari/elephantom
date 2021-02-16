@@ -1,5 +1,22 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module GLSL
-  ( module Language.GLSL.Compilation
+  (-- vert
+  --, frag
   ) where
 
-import Language.GLSL.Compilation
+import SpirV
+--import qualified Vulkan.Utils.ShaderQQ as Vulkan
+import Language.Haskell.TH
+import Language.Haskell.TH.Quote (QuasiQuoter (..))
+
+vert :: QuasiQuoter
+vert = QuasiQuoter
+  { quoteExp = quoteExpShader Vert
+  , quotePat = error "not support"
+  , quoteType = error "not support"
+  , quoteDec = error "not support"
+  }
+
+quoteExpShader :: ShaderStage -> String -> Q Exp
+quoteExpShader = undefined
