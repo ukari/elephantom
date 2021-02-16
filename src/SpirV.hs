@@ -238,7 +238,7 @@ makeUboDescriptorSetLayoutBinding :: ShaderStage -> Ubo -> (Int, DescriptorSetLa
 makeUboDescriptorSetLayoutBinding stage Ubo {..} = (set, zero
   { binding = fromIntegral binding
   , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-  , descriptorCount = maybe 0 (V.sum . (fromIntegral <$>)) array
+  , descriptorCount = maybe 1 (V.sum . (fromIntegral <$>)) array
   , stageFlags = convertStage stage
   })
 
@@ -258,7 +258,7 @@ makeTextureDescriptorSetLayoutBinding :: ShaderStage -> Texture -> (Int, Descrip
 makeTextureDescriptorSetLayoutBinding stage Texture {..} = (set, zero
   { binding = fromIntegral binding
   , descriptorType = convertTextureDescriptorType . fromString $ type'
-  , descriptorCount = maybe 0 (V.sum . (fromIntegral <$>)) array
+  , descriptorCount = maybe 1 (V.sum . (fromIntegral <$>)) array
   , stageFlags = convertStage stage
   })
 
