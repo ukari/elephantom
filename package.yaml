@@ -30,6 +30,7 @@ library:
   dependencies:
   - template-haskell
   - streamly
+  - reflex
   - containers
   - linear
   - vector

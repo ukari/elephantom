@@ -16,6 +16,48 @@ packages:
     git: git@github.com:ukari/offset.git
     commit: 6fb0f46ba00da3a4a59e175f6613a4ab826272f3
 - completed:
+    hackage: reflex-0.8.0.0@sha256:e50de03568818072e2811211431ffe9811aeed69f3b24104b1dafb1b6fd0a525,11942
+    pantry-tree:
+      size: 4587
+      sha256: 41a690372195eecda7bc9631a3724bc8a60a47a765e5c4e7a7ef8bdaf6a6eae9
+  original:
+    hackage: reflex-0.8.0.0@sha256:e50de03568818072e2811211431ffe9811aeed69f3b24104b1dafb1b6fd0a525,11942
+- completed:
+    hackage: monoidal-containers-0.6.0.1@sha256:ffdfae0fde7a08e9e314667a78d86454d2d23137d85f226ec6e757c190fb28ad,2583
+    pantry-tree:
+      size: 569
+      sha256: 61d5a73cb768aa4d59db7365418a2fc1bb24b8c3e53ca496372656b6ba4d31ab
+  original:
+    hackage: monoidal-containers-0.6.0.1@sha256:ffdfae0fde7a08e9e314667a78d86454d2d23137d85f226ec6e757c190fb28ad,2583
+- completed:
+    hackage: patch-0.0.3.2@sha256:b4d3a60db88a04030392a06076defb9fe310a79577df7ff63ea2bb0298817b8d,2452
+    pantry-tree:
+      size: 977
+      sha256: b9ab71b93cdff84a75c9d251513b4d64a9fea5b89526ecbec60eb9ae04521478
+  original:
+    hackage: patch-0.0.3.2@sha256:b4d3a60db88a04030392a06076defb9fe310a79577df7ff63ea2bb0298817b8d,2452
+- completed:
+    hackage: prim-uniq-0.2@sha256:7bfd8a729812bf212610b63459b76a086ecd5ce48f48d785c288e082d055d47b,1403
+    pantry-tree:
+      size: 464
+      sha256: aa27fb2f22141bd9bb474091f811badd9c71c52a1504fb81834aeb28cecff626
+  original:
+    hackage: prim-uniq-0.2@sha256:7bfd8a729812bf212610b63459b76a086ecd5ce48f48d785c288e082d055d47b,1403
+- completed:
+    hackage: ref-tf-0.4.0.2@sha256:69de3550250e0cd69f45d080359cb314a9487c915024349c75b78732bbee9332,1134
+    pantry-tree:
+      size: 211
+      sha256: fc5a4a35b4c782a33f452c1dc66ffa8ddbf321e2db369bd8823c796f0d4d8c7f
+  original:
+    hackage: ref-tf-0.4.0.2@sha256:69de3550250e0cd69f45d080359cb314a9487c915024349c75b78732bbee9332,1134
+- completed:
+    hackage: witherable-0.3.5@sha256:6590a15735b50ac14dcc138d4265ff1585d5f3e9d3047d5ebc5abf4cd5f50084,1476
+    pantry-tree:
+      size: 271
+      sha256: b99f21dbac28da031eb7c787fbffbe5e77e0aee42b64b5dda082470e907d5ab5
+  original:
+    hackage: witherable-0.3.5@sha256:6590a15735b50ac14dcc138d4265ff1585d5f3e9d3047d5ebc5abf4cd5f50084,1476
+- completed:
     hackage: repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
     pantry-tree:
       size: 2965

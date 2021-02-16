@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 93724d175abdf01bf4040fd93d6cab01a42d0b92e3a56c5202d7737a63cab5b4
+-- hash: b6fe9834c90bafcb6c9d38c3383af8d49132644ed836fd1f987e5f40b795949f
 
 name:           elephantom
 version:        0.1.0.0
@@ -64,6 +64,7 @@ library
     , parsec
     , qm-interpolated-string
     , recursion-schemes
+    , reflex
     , repa
     , resourcet
     , sdl2
