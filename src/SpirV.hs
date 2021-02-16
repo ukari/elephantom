@@ -390,12 +390,15 @@ reflection stage code = do
     Just reflection -> pure (Shader {stage, code = spirv}, reflection)
     Nothing -> error "fail to reflect"
 
-reflection' :: MonadIO m => ShaderStage -> "spirv" ::: B.ByteString -> m (Shader, Reflection)
-reflection' stage spirv = do
+reflection' :: MonadIO m => "spirv" ::: B.ByteString -> m (Shader, Reflection)
+reflection' spirv = do
   reflectionRaw <- reflect' spirv
   case decode reflectionRaw of
-    Just reflection -> pure (Shader {stage, code = spirv}, reflection)
+    Just reflection -> pure (Shader {stage = getShaderStage reflection, code = spirv}, reflection)
     Nothing -> error "fail to reflect"
+
+getShaderStage :: Reflection -> ShaderStage
+getShaderStage Reflection {..} = fromString . mode . V.head $ entryPoints
 
 testVert :: String
 testVert = [qnb|
