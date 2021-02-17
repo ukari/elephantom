@@ -157,9 +157,6 @@ test4 = do
   frag <- reflection (fromString "frag") testFrag
   liftIO . print . makeInputInfo $ V.fromList [vert, frag]
 
--- glslangValidator
--- -S <stage>  uses specified stage rather than parsing the file extension
---              choices for <stage> are vert, tesc, tese, geom, frag, or comp
 data ShaderStage
   = Vert
   | Frag
@@ -167,6 +164,14 @@ data ShaderStage
   | Tesc
   | Tese
   | Geom
+  | Rgen
+  | Rint
+  | Rahit
+  | Rchit
+  | Rmiss
+  | Rcall
+  | Task
+  | Mesh
   deriving (Eq)
 
 instance IsString ShaderStage where
@@ -177,6 +182,14 @@ instance IsString ShaderStage where
     "tesc" -> Tesc
     "tese" -> Tese
     "geom" -> Geom
+    "rgen" -> Rgen
+    "rint" -> Rint
+    "rahit" -> Rahit
+    "rchit" -> Rchit
+    "rmiss" -> Rmiss
+    "rcall" -> Rcall
+    "task" -> Task
+    "mesh" -> Mesh
     unsupport -> error $ "ShaderStage not support '" <> unsupport <> "'"
 
 instance Show ShaderStage where
@@ -187,6 +200,14 @@ instance Show ShaderStage where
     Tesc -> "tesc"
     Tese -> "tese"
     Geom -> "geom"
+    Rgen -> "rgen"
+    Rint -> "rint"
+    Rahit -> "rahit"
+    Rchit -> "rchit"
+    Rmiss -> "rmiss"
+    Rcall -> "rcall"
+    Task -> "task"
+    Mesh -> "mesh"
 
 convertStage :: ShaderStage -> ShaderStageFlagBits
 convertStage = \case
@@ -196,6 +217,14 @@ convertStage = \case
   Tesc -> SHADER_STAGE_TESSELLATION_CONTROL_BIT
   Tese -> SHADER_STAGE_TESSELLATION_EVALUATION_BIT
   Geom -> SHADER_STAGE_GEOMETRY_BIT
+  Rgen -> SHADER_STAGE_RAYGEN_BIT_KHR
+  Rint -> SHADER_STAGE_INTERSECTION_BIT_KHR
+  Rahit -> SHADER_STAGE_ANY_HIT_BIT_KHR
+  Rchit -> SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+  Rmiss -> SHADER_STAGE_MISS_BIT_KHR
+  Rcall -> SHADER_STAGE_CALLABLE_BIT_KHR
+  Task -> SHADER_STAGE_TASK_BIT_NV
+  Mesh -> SHADER_STAGE_MESH_BIT_NV
 
 data Shader = Shader
   { stage :: ShaderStage
