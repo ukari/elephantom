@@ -400,7 +400,7 @@ reflect :: MonadIO m => ShaderStage -> "code" ::: String -> m (B.ByteString, BL.
 reflect shaderStage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   let stage = show shaderStage
   let shader = dir </> "glsl." <> stage
-  let spv = dir </> "vert.spv"
+  let spv = dir </> stage <> ".spv"
   writeFile shader code
   (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", stage, "-V", shader, "-o", spv]
   spirv <- B.readFile spv
@@ -409,7 +409,7 @@ reflect shaderStage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir ->
 
 reflect' :: MonadIO m => "spirv" ::: B.ByteString -> m BL.ByteString
 reflect' spirv = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
-  let spv = dir </> "vert.spv"
+  let spv = dir </> "glsl.spv"
   B.writeFile spv spirv
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
   pure reflectionRaw
