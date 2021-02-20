@@ -397,11 +397,12 @@ makeVertexInputAttributeDescription offset VertexAttribute {..} = (offset + size
   })
 
 reflect :: MonadIO m => ShaderStage -> "code" ::: String -> m (B.ByteString, BL.ByteString)
-reflect stage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
-  let shader = dir </> "test.vert"
+reflect shaderStage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
+  let stage = show shaderStage
+  let shader = dir </> "glsl." <> stage
   let spv = dir </> "vert.spv"
   writeFile shader code
-  (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", show stage, "-V", shader, "-o", spv]
+  (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", stage, "-V", shader, "-o", spv]
   spirv <- B.readFile spv
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
   pure (spirv, reflectionRaw)
