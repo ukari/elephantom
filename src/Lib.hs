@@ -75,6 +75,7 @@ import Data.Function (on)
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
 import qualified Streamly.Prelude as S
+import Reflex
 import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
@@ -92,6 +93,10 @@ import GLSL
 import Shader
 import Offset
 import SpirV
+
+test :: (MonadHold t m, Num a, TriggerEvent t f) => f (m (Behavior t a))
+test = hold 1 . fst <$> newTriggerEvent
+
 
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing
