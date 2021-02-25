@@ -31,6 +31,8 @@ library:
   - template-haskell
   - streamly
   - reflex
+  - elerea
+  - time
   - containers
   - linear
   - vector

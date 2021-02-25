@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b6fe9834c90bafcb6c9d38c3383af8d49132644ed836fd1f987e5f40b795949f
+-- hash: dfed90ba17737306b39e4d38edb4e8fea4e261424c914d19b22f21955add4cb4
 
 name:           elephantom
 version:        0.1.0.0
@@ -54,6 +54,7 @@ library
     , bytestring
     , containers
     , derive-storable
+    , elerea
     , errors
     , filepath
     , fused-effects
@@ -72,6 +73,7 @@ library
     , template-haskell
     , temporary-rc
     , text
+    , time
     , transformers
     , typed-process
     , vector
