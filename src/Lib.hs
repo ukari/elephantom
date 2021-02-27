@@ -8,6 +8,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 
 -- sugar
 --{-# LANGUAGE PatternSynonyms #-}
@@ -71,23 +73,32 @@ import Data.Maybe (fromMaybe, isNothing, isJust)
 import Data.Bool (bool)
 import Data.List ((\\), group, sort, sortOn, groupBy)
 import Data.Function (on)
+import Data.Time (getCurrentTime)
+import Data.Functor ((<&>))
+import Data.Dependent.Sum (DSum ((:=>)))
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
 import qualified Streamly.Prelude as S
 import Reflex
+import qualified Reflex as R
+import Reflex.Host.Headless (MonadHeadlessApp, runHeadlessApp)
+import Reflex.Host.Class (MonadReflexHost, runHostFrame)
+import FRP.Elerea.Param
 import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
-import Control.Monad (liftM2, join)
+import Control.Monad (liftM2, join, forever)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Resource (MonadResource, ResourceT, runResourceT, allocate, allocate_, release, register, liftResourceT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Control.Monad.Fix (MonadFix)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), throw, handleJust)
-import Control.Concurrent (forkIO, forkOS)
+import Control.Concurrent (forkIO, forkOS, threadDelay)
+import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 
 import GLSL
 import Shader
@@ -97,6 +108,21 @@ import SpirV
 test :: (MonadHold t m, Num a, TriggerEvent t f) => f (m (Behavior t a))
 test = hold 1 . fst <$> newTriggerEvent
 
+tick :: (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m))
+     => m (R.Event t TickInfo)
+tick = do
+  cur <- liftIO getCurrentTime
+  tickLossy 1e-10 cur
+
+test2 :: IO ()
+test2 = do
+  runHeadlessApp $ do
+    pb <- tick
+    pb2 <- throttle 1 pb
+    performEvent_ ( liftIO . print <$> pb2)
+    pure never
+
+test3 = runSpiderHost . runHostFrame . R.sample
 
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing
@@ -464,7 +490,7 @@ loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..
     ] []
   pure $ Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices)
 
-type Managed a = forall m . MonadResource m => m a
+type Managed a = forall m . (MonadResource m) => m a
 
 data AppException
   = ImageLoadException String

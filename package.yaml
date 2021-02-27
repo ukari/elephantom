@@ -33,6 +33,7 @@ library:
   - reflex
   - elerea
   - time
+  - dependent-sum
   - containers
   - linear
   - vector
