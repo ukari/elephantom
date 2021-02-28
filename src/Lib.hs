@@ -84,6 +84,7 @@ import Reflex
 import qualified Reflex as R
 import Reflex.Host.Headless (MonadHeadlessApp, runHeadlessApp)
 import Reflex.Host.Class (MonadReflexHost, runHostFrame)
+import Reflex.Workflow (Workflow (..))
 import FRP.Elerea.Param
 import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
@@ -105,6 +106,10 @@ import Shader
 import Offset
 import SpirV
 
+type Singal a = forall t m . (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)) => m (R.Event t a)
+
+type Varing a = forall t m . (Reflex t, MonadHold t m, MonadFix m) => m (Behavior t a)
+
 test :: (MonadHold t m, Num a, TriggerEvent t f) => f (m (Behavior t a))
 test = hold 1 . fst <$> newTriggerEvent
 
@@ -123,6 +128,14 @@ test2 = do
     pure never
 
 test3 = runSpiderHost . runHostFrame . R.sample
+
+-- testres :: (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m))
+--      => m (R.Event t TickInfo) -> m (Behavior t Integer)
+-- testres e = do
+--   t <- e
+--   eStep <- _tickInfo_n <$> t
+--   hold 0 e
+
 
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing
