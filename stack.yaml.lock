@@ -72,13 +72,6 @@ packages:
   original:
     hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
 - completed:
-    hackage: VulkanMemoryAllocator-0.3.12@sha256:a4cbbb0fb4fb6221fb2911f6c26198a591b0cfe5f100f5df26a44e50da6f1e5f,2861
-    pantry-tree:
-      size: 524
-      sha256: 01daf655e88cb104e4db68c65f8d00232db7a335a31202cf046719af8033fe8c
-  original:
-    hackage: VulkanMemoryAllocator-0.3.12@sha256:a4cbbb0fb4fb6221fb2911f6c26198a591b0cfe5f100f5df26a44e50da6f1e5f,2861
-- completed:
     hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
     pantry-tree:
       size: 901
@@ -93,19 +86,26 @@ packages:
   original:
     hackage: derive-storable-plugin-0.2.3.3@sha256:5e6fda22fc834d717c40b31b8a5110d0644176c4bf92f8f62481f50067531719,2787
 - completed:
-    hackage: vulkan-3.9@sha256:da8cbca7d57fa8f5011f0487aeda2020c0ab3c96377cf4e4cf3ec28603100201,24122
+    hackage: VulkanMemoryAllocator-0.3.12@sha256:a4cbbb0fb4fb6221fb2911f6c26198a591b0cfe5f100f5df26a44e50da6f1e5f,2861
     pantry-tree:
-      size: 66301
-      sha256: 22445f2a78735a97fd9c06efb9a52d0a1fc0aaa2615b9f6d377a8a791188c2d0
+      size: 524
+      sha256: 01daf655e88cb104e4db68c65f8d00232db7a335a31202cf046719af8033fe8c
   original:
-    hackage: vulkan-3.9@sha256:da8cbca7d57fa8f5011f0487aeda2020c0ab3c96377cf4e4cf3ec28603100201,24122
+    hackage: VulkanMemoryAllocator-0.3.12@sha256:a4cbbb0fb4fb6221fb2911f6c26198a591b0cfe5f100f5df26a44e50da6f1e5f,2861
 - completed:
-    hackage: vulkan-utils-0.4.1@sha256:ab90c395ebd82f9849788dd846d792b01884a766f28a5f1ec27191bc59734730,3090
+    hackage: vulkan-3.9.1@sha256:1a62bd1b8c17da34c946aacb04e3b4a5e96075617a3398dc4e380250aa0dbe3a,24252
     pantry-tree:
-      size: 1374
-      sha256: 046e2e966ad9510e37aaec5fd148ce733d533aaceaa1c3a5bee6333ccbaecf56
+      size: 66732
+      sha256: 5030f2cf32f56413fd9a64a58b424b614672c93f723ee00da03371aec4c7393c
   original:
-    hackage: vulkan-utils-0.4.1@sha256:ab90c395ebd82f9849788dd846d792b01884a766f28a5f1ec27191bc59734730,3090
+    hackage: vulkan-3.9.1@sha256:1a62bd1b8c17da34c946aacb04e3b4a5e96075617a3398dc4e380250aa0dbe3a,24252
+- completed:
+    hackage: vulkan-utils-0.5.0@sha256:12565f38854bad5e349cb7cf71bf447d2d3720dc89b5ff92158079267be5a7c3,3954
+    pantry-tree:
+      size: 2225
+      sha256: ea0570b34b9c7c4958c72650572ee5d01d45193a25391a16f43b98cce4c77a4b
+  original:
+    hackage: vulkan-utils-0.5.0@sha256:12565f38854bad5e349cb7cf71bf447d2d3720dc89b5ff92158079267be5a7c3,3954
 - completed:
     hackage: dependent-map-0.4.0.0@sha256:ca2b131046f4340a1c35d138c5a003fe4a5be96b14efc26291ed35fd08c62221,1657
     pantry-tree:

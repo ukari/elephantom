@@ -34,7 +34,7 @@ import qualified Vulkan.Core10 as Core10
 import qualified Vulkan.Extensions.VK_KHR_swapchain as Swap
 import Vulkan.Extensions.VK_EXT_acquire_xlib_display
 --import Vulkan.Utils.Debug
-import Vulkan.Utils.ShaderQQ (vert, frag)
+import Vulkan.Utils.ShaderQQ.GLSL.Glslang (vert, frag)
 import Vulkan.Utils.Initialization (createDebugInstanceFromRequirements, createDeviceFromRequirements)
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
@@ -117,14 +117,18 @@ tick :: (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformE
      => m (R.Event t TickInfo)
 tick = do
   cur <- liftIO getCurrentTime
-  tickLossy 1e-10 cur
+  tickLossy 1 cur
+
+tickStep :: (PostBuild t f, PerformEvent t f, TriggerEvent t f, MonadIO f, MonadIO (Performable f), MonadHold t f, MonadFix f)
+         => f (R.Event t Integer)
+tickStep = (_tickInfo_n <$>) <$> tick
 
 test2 :: IO ()
 test2 = do
   runHeadlessApp $ do
     pb <- tick
     pb2 <- throttle 1 pb
-    performEvent_ ( liftIO . print <$> pb2)
+    performEvent_ (liftIO . print <$> pb2)
     pure never
 
 test3 = runSpiderHost . runHostFrame . R.sample

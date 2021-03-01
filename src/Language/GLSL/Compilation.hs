@@ -18,7 +18,7 @@ import Text.Parsec.Text
 import Text.Parsec.Char
 import Text.Parsec.Error
 
-import qualified Vulkan.Utils.ShaderQQ as VulkanUtils
+import qualified Vulkan.Utils.ShaderQQ.GLSL.Glslang as VulkanUtils
 
 import Data.Text (Text, pack, unpack)
 
