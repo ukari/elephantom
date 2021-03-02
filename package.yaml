@@ -34,6 +34,7 @@ library:
   - elerea
   - time
   - dependent-sum
+  - microlens-platform
   - containers
   - linear
   - vector

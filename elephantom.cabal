@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7c3cb4cd2c934fa1c246cd84f338e92b9802093db6bab6d85930ce5cb98fc56c
+-- hash: 1277069d2a31b912bc6c3fc83f242ac34d39ccdca1a428b6fd152b5f9c577f04
 
 name:           elephantom
 version:        0.1.0.0
@@ -62,6 +62,7 @@ library
     , gitrev
     , hspec
     , linear
+    , microlens-platform
     , offset
     , parsec
     , qm-interpolated-string
