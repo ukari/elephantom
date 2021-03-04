@@ -83,16 +83,22 @@ import qualified Streamly.Prelude as S
 import Reflex
 import qualified Reflex as R
 import Reflex.Host.Headless (MonadHeadlessApp, runHeadlessApp)
-import Reflex.Host.Class (MonadReflexHost, runHostFrame)
+import Reflex.Host.Class (MonadReflexHost, runHostFrame, fireEventsAndRead, fireEvents)
 import Reflex.Workflow (Workflow (..))
 import FRP.Elerea.Param
+import Control.Algebra
+import Control.Carrier.Lift
+import Control.Carrier.Reader
+import Control.Carrier.State.Strict hiding (modify)
+import Control.Effect.Throw (throwError)
+import Control.Effect.Exception (throw, catch, catchJust, try, tryJust)
 import Control.Applicative (liftA2)
 import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
 import Control.Monad (liftM2, join, forever)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Resource (MonadResource, ResourceT, runResourceT, allocate, allocate_, release, register, liftResourceT)
+import Control.Monad.Trans.Resource (MonadResource, ResourceT, ReleaseKey, runResourceT, allocate, allocate_, release, register, liftResourceT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Monad.Fix (MonadFix)
@@ -110,35 +116,6 @@ type Singal a = forall t m . (Reflex t, MonadHold t m, MonadFix m, MonadIO m, Po
 
 type Varing a = forall t m . (Reflex t, MonadHold t m, MonadFix m) => m (Behavior t a)
 
-test :: (MonadHold t m, Num a, TriggerEvent t f) => f (m (Behavior t a))
-test = hold 1 . fst <$> newTriggerEvent
-
-tick :: (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m))
-     => m (R.Event t TickInfo)
-tick = do
-  cur <- liftIO getCurrentTime
-  tickLossy 1 cur
-
-tickStep :: (PostBuild t f, PerformEvent t f, TriggerEvent t f, MonadIO f, MonadIO (Performable f), MonadHold t f, MonadFix f)
-         => f (R.Event t Integer)
-tickStep = (_tickInfo_n <$>) <$> tick
-
-test2 :: IO ()
-test2 = do
-  runHeadlessApp $ do
-    pb <- tick
-    pb2 <- throttle 1 pb
-    performEvent_ (liftIO . print <$> pb2)
-    pure never
-
-test3 = runSpiderHost . runHostFrame . R.sample
-
--- testres :: (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m))
---      => m (R.Event t TickInfo) -> m (Behavior t Integer)
--- testres e = do
---   t <- e
---   eStep <- _tickInfo_n <$> t
---   hold 0 e
 
 
 appInfo :: ApplicationInfo
@@ -279,7 +256,6 @@ drawFrame (x@Frame {..}, s@SwapchainResource {..}) = do
   _ <- waitForFencesSafe device [ fence ] True maxBound
   resetFences device [ fence ]
   imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
-  --liftIO $ print imageIndex
   queueSubmit graphicsQueue
     [ SomeStruct $ zero
       { Core10.waitSemaphores = [ imageAvailableSemaphore ]
@@ -715,10 +691,10 @@ withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
   pure ()
 
 data SwapchainResource = SwapchainResource
-  { swapchain :: SwapchainKHR
-  , images :: V.Vector Image
-  , imageViews :: V.Vector ImageView
-  , framebuffers :: V.Vector Framebuffer
+  { swapchain :: !SwapchainKHR
+  , images :: !(V.Vector Image)
+  , imageViews :: !(V.Vector ImageView)
+  , framebuffers :: !(V.Vector Framebuffer)
   }
 
 chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode

@@ -23,7 +23,7 @@ import qualified Vulkan.Utils.ShaderQQ.GLSL.Glslang as VulkanUtils
 import Data.Text (Text, pack, unpack)
 
 import Control.Monad (void)
-import Control.Monad.Trans.Except (ExceptT, runExcept, withExcept)
+-- import Control.Monad.Trans.Except (ExceptT, runExcept, withExcept)
 import Control.Exception (Exception)
 import Control.Error.Util (hoistEither, failWith)
 

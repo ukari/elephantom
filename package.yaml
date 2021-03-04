@@ -59,6 +59,7 @@ library:
   - Rasterific
   - errors
   - fused-effects
+  - fused-effects-exceptions
   - transformers
   - derive-storable
   - offset
