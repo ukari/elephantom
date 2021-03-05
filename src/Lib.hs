@@ -206,15 +206,6 @@ someFunc = runResourceT $ do
   let surfaceFormat = formats ! 0
   renderPass <- Lib.withRenderPass device surfaceFormat
 
-
-   
-  V2 width height <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
-  commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
-  liftIO $ print $ V.map commandBufferHandle commandBuffers
-  let frameSize = fromIntegral . length $ commandBuffers
-  
   -- resource load
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
@@ -227,14 +218,19 @@ someFunc = runResourceT $ do
 
   shaderRes <- withShaderStages device
   pipelineRes <- Lib.withPipeline device renderPass shaderRes
-  trianglePresent <- loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
+  trianglePresent <- loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes
   textureShaderRes <- Lib.withTextureShaderStages device
   texturePipelineRes <- Lib.withPipeline device renderPass textureShaderRes
-  texturePresent <- loadTexture allocator phys device queueFamilyIndices frameSize queueRes commandPoolRes textureShaderRes texturePipelineRes
+  texturePresent <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   -- resource load end
   
   
-  
+  V2 width height <- SDL.vkGetDrawableSize window
+  let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
+  commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
+  liftIO $ print $ V.map commandBufferHandle commandBuffers
+  let frameSize = fromIntegral . length $ commandBuffers
  
 
   
@@ -290,8 +286,8 @@ drawFrame (x@Frame {..}, s@SwapchainResource {..}) = do
     , s
     )
 
-loadTriangle :: Vma.Allocator -> Device -> V.Vector Word32 -> Word32 -> ShaderResource -> PipelineResource -> Managed Present
-loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes = do
+loadTriangle :: Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> Managed Present
+loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
   
   (vertexBuffer, vertexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
@@ -333,7 +329,7 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
         }
   liftIO . runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
   liftIO . print $ descriptorSetLayoutCreateInfos shaderRes
-  descriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts shaderRes) (descriptorSetLayoutCreateInfos shaderRes)
+  descriptorSetResource <- withDescriptorSetResource device (descriptorSetLayouts shaderRes) (descriptorSetLayoutCreateInfos shaderRes)
   liftIO . print $ descriptorSetResource
   let bufferInfos :: V.Vector DescriptorBufferInfo
       bufferInfos =
@@ -357,11 +353,11 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
     ] []
   pure $ Present (pipeline (pipelineRes :: PipelineResource)) (pipelineLayout (pipelineRes :: PipelineResource)) [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices)
 
-loadTexture :: Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> Managed Present
-loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..} CommandPoolResource {..}  textureShaderRes texturePipelineRes = do
+loadTexture :: Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> Managed Present
+loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes texturePipelineRes = do
   liftIO . print . descriptorSetLayouts $ textureShaderRes
   textureSampler <- withTextureSampler phys device
-  textureDescriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes)
+  textureDescriptorSetResource <- withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes)
   let texCoords =
         [ Texture (V2 50 50) (V4 0 0 0 1) (V2 0 0)
         , Texture (V2 250 50) (V4 0 0 0 1) (V2 1 0)
@@ -716,12 +712,12 @@ chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode
 chooseSharingMode indices | length indices == 1 = SHARING_MODE_EXCLUSIVE
                           | otherwise = SHARING_MODE_CONCURRENT
 
-withSwapchain :: PhysicalDevice-> Device -> SurfaceKHR -> SurfaceFormatKHR ->  "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> RenderPass -> SwapchainKHR -> Managed SwapchainResource
+withSwapchain :: PhysicalDevice -> Device -> SurfaceKHR -> SurfaceFormatKHR -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> RenderPass -> SwapchainKHR -> Managed SwapchainResource
 withSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapchain = do
   (_, presentModes) <- getPhysicalDeviceSurfacePresentModesKHR phys surf
   liftIO $ print presentModes
-  let presentMode = tryWith PRESENT_MODE_FIFO_KHR (V.find (== PRESENT_MODE_MAILBOX_KHR) presentModes)
   surfaceCaps <- getPhysicalDeviceSurfaceCapabilitiesKHR phys surf
+  let presentMode = tryWith PRESENT_MODE_FIFO_KHR (V.find (== PRESENT_MODE_MAILBOX_KHR) presentModes)
   let sharingMode = chooseSharingMode indices
   let swapchainCreateInfo :: SwapchainCreateInfoKHR '[]
       swapchainCreateInfo = zero
@@ -879,12 +875,12 @@ data DescriptorSetResource = DescriptorSetResource
   , descriptorSets :: !(V.Vector DescriptorSet)
   } deriving (Show)
 
-withDescriptorSetResource :: Device -> Word32 -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> Managed DescriptorSetResource
-withDescriptorSetResource device frameSize descriptorSetLayouts descriptorSetLayoutCreateInfos = do
+withDescriptorSetResource :: Device -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> Managed DescriptorSetResource
+withDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos = do
   -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
   -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
   -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
-  let descriptorPoolCreateInfo = makeDescriptorPoolCreateInfo frameSize descriptorSetLayoutCreateInfos
+  let descriptorPoolCreateInfo = makeDescriptorPoolCreateInfo (fromIntegral . length $ descriptorSetLayouts) descriptorSetLayoutCreateInfos
   descriptorPool <- snd <$> withDescriptorPool device descriptorPoolCreateInfo Nothing allocate
   descriptorSets <- snd <$> withDescriptorSets device zero
     { descriptorPool = descriptorPool
@@ -893,14 +889,14 @@ withDescriptorSetResource device frameSize descriptorSetLayouts descriptorSetLay
   pure DescriptorSetResource {..}
 
 makeDescriptorPoolCreateInfo :: Word32 -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> DescriptorPoolCreateInfo '[]
-makeDescriptorPoolCreateInfo frameSize infos = zero
+makeDescriptorPoolCreateInfo maxSets infos = zero
   { poolSizes = V.fromList
     [ zero
       { type' = t
       , descriptorCount = fromIntegral n
       }
     | (t, n) <- analyse infos ]
-  , maxSets = frameSize
+  , maxSets = maxSets
   , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT -- VUID-vkFreeDescriptorSets-descriptorPool-00312: descriptorPool must have been created with the VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag
   }
   where
