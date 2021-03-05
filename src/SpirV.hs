@@ -5,7 +5,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedLists #-}
@@ -13,6 +14,7 @@
 module SpirV
   ( ShaderStage (..)
   , ShaderInfo (..)
+  , DescriptorInfo (..)
   , reflection
   , reflection'
   , makeShaderInfo
@@ -242,8 +244,16 @@ makeShaderInfo (Shader {..}, Reflection {..}) = do
   let pipelineShaderStageCreateInfos = (SomeStruct <$>) . makePipelineShaderStageCreateInfos stage entryPoints
   ShaderInfo {..}
 
-makeDescriptorInfo :: Vector (Shader, Reflection) -> Vector (DescriptorSetLayoutCreateInfo '[])
-makeDescriptorInfo = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd)
+data DescriptorInfo = DescriptorInfo
+  { firstSet :: !Word32
+  , descriptorSetLayoutCreateInfos :: !(Vector (DescriptorSetLayoutCreateInfo '[]))
+  }
+  deriving (Show)
+
+makeDescriptorInfo :: Vector (Shader, Reflection) -> DescriptorInfo
+makeDescriptorInfo x = do
+  let (firstSet, descriptorSetLayoutCreateInfos) = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd) $ x
+  DescriptorInfo {..}
 
 makeInputInfo :: Vector (Shader, Reflection) -> Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
 makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.fromList . catMaybes . (inputs . snd <$>) . filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst) . V.toList
@@ -297,14 +307,15 @@ makeDescriptorSetLayoutBindings stage ubos textures = do
   let textureBindings = V.map (makeTextureDescriptorSetLayoutBinding stage) textures
   uboBindings <> textureBindings
 
-makeDescriptorSetLayoutCreateInfos :: Vector (Int, DescriptorSetLayoutBinding) -> V.Vector (DescriptorSetLayoutCreateInfo '[])
+makeDescriptorSetLayoutCreateInfos :: Vector (Int, DescriptorSetLayoutBinding) -> ("firstSet" ::: Word32,  V.Vector (DescriptorSetLayoutCreateInfo '[]))
 makeDescriptorSetLayoutCreateInfos bindings = do
-  let setSize = V.maximum . (fst <$>) $ bindings :: Int
+  let firstSet = fromIntegral . V.minimum . (fst <$>) $ bindings :: Word32
+  let setLayoutsSize = V.maximum . (fst <$>) $ bindings :: Int
   let sets :: Map Int (Vector DescriptorSetLayoutBinding)
-      sets = M.fromList . map (, []) $ [ 0 .. setSize ]
+      sets = M.fromList . map (, []) $ [ 0 .. setLayoutsSize ]
   let setsMap :: Map Int (Vector DescriptorSetLayoutBinding)
       setsMap = M.fromList . map (liftA2 (,) (fst . head) (V.fromList . (snd <$>))) . groupBy ((==) `on` fst) . sortOn fst . V.toList $ bindings
-  V.map makeDescriptorSetLayoutCreateInfo . V.fromList . M.elems . M.unionWith (V.++) sets $ setsMap
+  (firstSet, V.map makeDescriptorSetLayoutCreateInfo . V.fromList . M.elems . M.unionWith (V.++) sets $ setsMap)
 
 makeDescriptorSetLayoutCreateInfo :: Vector DescriptorSetLayoutBinding -> DescriptorSetLayoutCreateInfo '[]
 makeDescriptorSetLayoutCreateInfo bindings = zero { bindings = bindings }

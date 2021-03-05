@@ -110,7 +110,7 @@ import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 import GLSL
 import Shader
 import Offset
-import SpirV
+import qualified SpirV
 
 type Singal a = forall t m . (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)) => m (R.Event t a)
 
@@ -205,11 +205,17 @@ someFunc = runResourceT $ do
   formats <- snd <$> getPhysicalDeviceSurfaceFormatsKHR phys surf
   let surfaceFormat = formats ! 0
   renderPass <- Lib.withRenderPass device surfaceFormat
+
+
+   
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
   commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
   liftIO $ print $ V.map commandBufferHandle commandBuffers
+  let frameSize = fromIntegral . length $ commandBuffers
+  
+  -- resource load
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
   allocator <- snd <$> Vma.withAllocator zero
     { Vma.flags = Vma.ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT -- vmaGetBudget
@@ -218,7 +224,6 @@ someFunc = runResourceT $ do
     , Vma.instance' = instanceHandle inst
     , Vma.vulkanApiVersion = apiVersion (appInfo :: ApplicationInfo)
     } allocate
-  let frameSize = fromIntegral . length $ commandBuffers
 
   shaderRes <- withShaderStages device
   pipelineRes <- Lib.withPipeline device renderPass shaderRes
@@ -226,6 +231,13 @@ someFunc = runResourceT $ do
   textureShaderRes <- Lib.withTextureShaderStages device
   texturePipelineRes <- Lib.withPipeline device renderPass textureShaderRes
   texturePresent <- loadTexture allocator phys device queueFamilyIndices frameSize queueRes commandPoolRes textureShaderRes texturePipelineRes
+  -- resource load end
+  
+  
+  
+ 
+
+  
   mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
   SyncResource {..} <- withSyncResource device framebuffers
@@ -341,10 +353,11 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
       , texelBufferView = []
       }
     ] []
-  pure $ Present (pipeline (pipelineRes :: PipelineResource)) (pipelineLayout (pipelineRes :: PipelineResource)) [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices)
+  pure $ Present (pipeline (pipelineRes :: PipelineResource)) (pipelineLayout (pipelineRes :: PipelineResource)) [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices) (firstSet (shaderRes :: ShaderResource))
 
 loadTexture :: Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> Managed Present
 loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..} CommandPoolResource {..}  textureShaderRes texturePipelineRes = do
+  liftIO . print . descriptorSetLayouts $ textureShaderRes
   textureSampler <- withTextureSampler phys device
   textureDescriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts textureShaderRes ! 2) (descriptorSetLayoutCreateInfos textureShaderRes ! 2)
   let texCoords =
@@ -481,7 +494,7 @@ loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..
         ]
       }
     ] []
-  pure $ Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices)
+  pure $ Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices) (firstSet (textureShaderRes :: ShaderResource))
 
 type Managed a = forall m . (MonadResource m) => m a
 
@@ -753,24 +766,27 @@ withImageView device format img =
      } Nothing allocate
 
 data ShaderResource = ShaderResource
-  { shaderStages :: V.Vector (SomeStruct PipelineShaderStageCreateInfo)
-  , descriptorSetLayouts :: V.Vector DescriptorSetLayout
-  , descriptorSetLayoutCreateInfos :: V.Vector (DescriptorSetLayoutCreateInfo '[])
-  , vertexInputState :: Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
+  { shaderStages :: !(V.Vector (SomeStruct PipelineShaderStageCreateInfo))
+  , descriptorSetLayouts :: !(V.Vector DescriptorSetLayout)
+  , descriptorSetLayoutCreateInfos :: !(V.Vector (DescriptorSetLayoutCreateInfo '[]))
+  , vertexInputState :: !(Maybe (SomeStruct PipelineVertexInputStateCreateInfo))
+  , firstSet :: !Word32
   }
+  deriving (Show)
 
-withShaderModule :: Device -> ShaderInfo -> Managed ShaderModule
-withShaderModule device ShaderInfo {..} = snd <$> Vulkan.withShaderModule device shaderModuleCreateInfo Nothing allocate
+withShaderModule :: Device -> SpirV.ShaderInfo -> Managed ShaderModule
+withShaderModule device SpirV.ShaderInfo {..} = snd <$> Vulkan.withShaderModule device shaderModuleCreateInfo Nothing allocate
 
 withShaders :: Device -> V.Vector ("spirv" ::: ByteString) -> Managed ShaderResource
 withShaders device spirvs = do
   -- the reflection should be done in compile stage
-  reflects <- V.mapM reflection' spirvs
-  let shaderInfos = makeShaderInfo <$> reflects
-  shaderStages <- (join <$>) . V.mapM (liftA2 (<$>) pipelineShaderStageCreateInfos (Lib.withShaderModule device)) $ shaderInfos
-  let descriptorSetLayoutCreateInfos = makeDescriptorInfo reflects
+  reflects <- V.mapM SpirV.reflection' spirvs
+  let shaderInfos = SpirV.makeShaderInfo <$> reflects
+  shaderStages <- (join <$>) . V.mapM (liftA2 (<$>) SpirV.pipelineShaderStageCreateInfos (Lib.withShaderModule device)) $ shaderInfos
+  let SpirV.DescriptorInfo {..} = SpirV.makeDescriptorInfo reflects
+  -- let descriptorSetLayoutCreateInfos = makeDescriptorInfo reflects
   descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
-  let vertexInputState = makeInputInfo reflects
+  let vertexInputState = SpirV.makeInputInfo reflects
   pure ShaderResource {..}
 
 withShaderStages :: Device -> Managed ShaderResource
@@ -872,7 +888,7 @@ withDescriptorSetResource device frameSize descriptorSetLayout descriptorSetLayo
   descriptorPool <- snd <$> withDescriptorPool device descriptorPoolCreateInfo Nothing allocate
   descriptorSets <- snd <$> withDescriptorSets device zero
     { descriptorPool = descriptorPool
-    , setLayouts = [descriptorSetLayout]
+    , setLayouts = [ descriptorSetLayout ]
     } allocate
   pure DescriptorSetResource {..}
 
@@ -1066,6 +1082,7 @@ data Present = Present
   , indexBuffer :: !Buffer
   , descriptorSets :: !(V.Vector DescriptorSet)
   , drawSize :: !Word32
+  , firstSet :: !Word32
   }
 
 submitCommand :: "renderArea" ::: Extent2D -> RenderPass
@@ -1109,7 +1126,7 @@ submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuff
       cmdSetScissor commandBuffer 0 scissors
       cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
       cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
-      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 2 descriptorSets []
+      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout firstSet descriptorSets []
       cmdDrawIndexed commandBuffer drawSize 1 0 0 0
       --cmdDraw commandBuffer drawSize 1 0 0
 
