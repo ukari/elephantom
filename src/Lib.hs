@@ -332,7 +332,9 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
   liftIO . runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
-  descriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts shaderRes ! 2) (descriptorSetLayoutCreateInfos shaderRes ! 2)
+  liftIO . print $ descriptorSetLayoutCreateInfos shaderRes
+  descriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts shaderRes) (descriptorSetLayoutCreateInfos shaderRes)
+  liftIO . print $ descriptorSetResource
   let bufferInfos :: V.Vector DescriptorBufferInfo
       bufferInfos =
         [ zero
@@ -343,7 +345,7 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
         ]
   updateDescriptorSets device
     [ SomeStruct $ zero
-      { dstSet = descriptorSets (descriptorSetResource :: DescriptorSetResource) ! 0
+      { dstSet = descriptorSets (descriptorSetResource :: DescriptorSetResource) ! 2
       , dstBinding = 0
       , dstArrayElement = 0
       , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
@@ -353,13 +355,13 @@ loadTriangle allocator device queueFamilyIndices frameSize shaderRes pipelineRes
       , texelBufferView = []
       }
     ] []
-  pure $ Present (pipeline (pipelineRes :: PipelineResource)) (pipelineLayout (pipelineRes :: PipelineResource)) [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices) (firstSet (shaderRes :: ShaderResource))
+  pure $ Present (pipeline (pipelineRes :: PipelineResource)) (pipelineLayout (pipelineRes :: PipelineResource)) [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices)
 
 loadTexture :: Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> Managed Present
 loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..} CommandPoolResource {..}  textureShaderRes texturePipelineRes = do
   liftIO . print . descriptorSetLayouts $ textureShaderRes
   textureSampler <- withTextureSampler phys device
-  textureDescriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts textureShaderRes ! 2) (descriptorSetLayoutCreateInfos textureShaderRes ! 2)
+  textureDescriptorSetResource <- withDescriptorSetResource device frameSize (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes)
   let texCoords =
         [ Texture (V2 50 50) (V4 0 0 0 1) (V2 0 0)
         , Texture (V2 250 50) (V4 0 0 0 1) (V2 1 0)
@@ -470,7 +472,7 @@ loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..
   textureImageView <- Lib.withImageView device textureFormat textureImage
   updateDescriptorSets device
     [ SomeStruct $ zero
-      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 0
+      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 2
       , dstBinding = 0
       , dstArrayElement = 0
       , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
@@ -480,7 +482,7 @@ loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..
       , texelBufferView = []
       }
     , SomeStruct $ zero
-      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 0
+      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 2
       , dstBinding = 1
       , dstArrayElement = 0
       , descriptorType = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
@@ -494,7 +496,7 @@ loadTexture allocator phys device queueFamilyIndices frameSize QueueResource {..
         ]
       }
     ] []
-  pure $ Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices) (firstSet (textureShaderRes :: ShaderResource))
+  pure $ Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices)
 
 type Managed a = forall m . (MonadResource m) => m a
 
@@ -770,7 +772,6 @@ data ShaderResource = ShaderResource
   , descriptorSetLayouts :: !(V.Vector DescriptorSetLayout)
   , descriptorSetLayoutCreateInfos :: !(V.Vector (DescriptorSetLayoutCreateInfo '[]))
   , vertexInputState :: !(Maybe (SomeStruct PipelineVertexInputStateCreateInfo))
-  , firstSet :: !Word32
   }
   deriving (Show)
 
@@ -783,8 +784,7 @@ withShaders device spirvs = do
   reflects <- V.mapM SpirV.reflection' spirvs
   let shaderInfos = SpirV.makeShaderInfo <$> reflects
   shaderStages <- (join <$>) . V.mapM (liftA2 (<$>) SpirV.pipelineShaderStageCreateInfos (Lib.withShaderModule device)) $ shaderInfos
-  let SpirV.DescriptorInfo {..} = SpirV.makeDescriptorInfo reflects
-  -- let descriptorSetLayoutCreateInfos = makeDescriptorInfo reflects
+  let descriptorSetLayoutCreateInfos = SpirV.makeDescriptorInfo reflects
   descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
   let vertexInputState = SpirV.makeInputInfo reflects
   pure ShaderResource {..}
@@ -879,35 +879,35 @@ data DescriptorSetResource = DescriptorSetResource
   , descriptorSets :: !(V.Vector DescriptorSet)
   } deriving (Show)
 
-withDescriptorSetResource :: Device -> Word32 -> DescriptorSetLayout -> DescriptorSetLayoutCreateInfo '[] -> Managed DescriptorSetResource
-withDescriptorSetResource device frameSize descriptorSetLayout descriptorSetLayoutCreateInfo = do
+withDescriptorSetResource :: Device -> Word32 -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> Managed DescriptorSetResource
+withDescriptorSetResource device frameSize descriptorSetLayouts descriptorSetLayoutCreateInfos = do
   -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
   -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
   -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
-  let descriptorPoolCreateInfo = makeDescriptorPoolCreateInfo frameSize descriptorSetLayoutCreateInfo
+  let descriptorPoolCreateInfo = makeDescriptorPoolCreateInfo frameSize descriptorSetLayoutCreateInfos
   descriptorPool <- snd <$> withDescriptorPool device descriptorPoolCreateInfo Nothing allocate
   descriptorSets <- snd <$> withDescriptorSets device zero
     { descriptorPool = descriptorPool
-    , setLayouts = [ descriptorSetLayout ]
+    , setLayouts = descriptorSetLayouts
     } allocate
   pure DescriptorSetResource {..}
 
-makeDescriptorPoolCreateInfo :: Word32 -> DescriptorSetLayoutCreateInfo '[] -> DescriptorPoolCreateInfo '[]
-makeDescriptorPoolCreateInfo frameSize info = zero
+makeDescriptorPoolCreateInfo :: Word32 -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> DescriptorPoolCreateInfo '[]
+makeDescriptorPoolCreateInfo frameSize infos = zero
   { poolSizes = V.fromList
     [ zero
       { type' = t
       , descriptorCount = fromIntegral n
       }
-    | (t, n) <- analyse info ]
+    | (t, n) <- analyse infos ]
   , maxSets = frameSize
   , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT -- VUID-vkFreeDescriptorSets-descriptorPool-00312: descriptorPool must have been created with the VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag
   }
   where
-    analyse :: DescriptorSetLayoutCreateInfo '[] -> [(DescriptorType, Int)]
+    analyse :: V.Vector (DescriptorSetLayoutCreateInfo '[]) -> [(DescriptorType, Int)]
     analyse = map count . groupBy ((==) `on` fst) . sortOn fst . extract
-    extract :: DescriptorSetLayoutCreateInfo '[] -> [(DescriptorType, Int)]
-    extract = map (liftA2 (,) tname (fromIntegral . dcount)) . V.toList . bindings
+    extract :: V.Vector (DescriptorSetLayoutCreateInfo '[]) -> [(DescriptorType, Int)]
+    extract = map (liftA2 (,) tname (fromIntegral . dcount)) . V.toList . (bindings =<<)
     count :: [(DescriptorType, Int)] -> (DescriptorType, Int)
     count = liftA2 (,) (fst . head) (sum . (snd <$>))
     tname = descriptorType :: DescriptorSetLayoutBinding -> DescriptorType
@@ -1082,7 +1082,6 @@ data Present = Present
   , indexBuffer :: !Buffer
   , descriptorSets :: !(V.Vector DescriptorSet)
   , drawSize :: !Word32
-  , firstSet :: !Word32
   }
 
 submitCommand :: "renderArea" ::: Extent2D -> RenderPass
@@ -1126,7 +1125,7 @@ submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuff
       cmdSetScissor commandBuffer 0 scissors
       cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
       cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
-      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout firstSet descriptorSets []
+      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS pipelineLayout 0 descriptorSets []
       cmdDrawIndexed commandBuffer drawSize 1 0 0 0
       --cmdDraw commandBuffer drawSize 1 0 0
 
