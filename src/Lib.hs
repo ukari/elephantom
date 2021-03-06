@@ -224,23 +224,23 @@ someFunc = runResourceT $ do
   texturePresent <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   -- resource load end
   
-  
-  V2 width height <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
-  commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
-  liftIO $ print $ V.map commandBufferHandle commandBuffers
-  let frameSize = fromIntegral . length $ commandBuffers
+  runResourceT $ do
+    V2 width height <- SDL.vkGetDrawableSize window
+    let extent = Extent2D (fromIntegral width) (fromIntegral height)
+    swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
+    commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
+    liftIO $ print $ V.map commandBufferHandle commandBuffers
+    let frameSize = fromIntegral . length $ commandBuffers
  
 
   
-  mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
+    mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
-  SyncResource {..} <- withSyncResource device framebuffers
+    SyncResource {..} <- withSyncResource device framebuffers
 
-  let fps = 1
-  let sync = 0
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (Frame {..}, swapchainRes)
+    let fps = 1
+    let sync = 0
+    liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (Frame {..}, swapchainRes)
   return undefined
 
 data Frame = Frame
