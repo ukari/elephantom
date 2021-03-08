@@ -139,19 +139,25 @@ promoteTo = \case
 
 makeRes :: (Show a, MonadResource m) => a -> m a
 makeRes x = do
-  allocate_ (liftIO . pure $ x) (liftIO . print $ "release " <> show x)
+  _ <- allocate_ (liftIO . pure $ x) (liftIO . print $ "release " <> show x)
   pure x
 
-step :: (MonadIO m) => Int -> m (Maybe Int)
-step x = do
-  liftIO . print $ "x is : " <> show x
-  if (x < 10)
-    then pure . Just $ x + 1
+step :: (MonadIO m) => (String, Int) -> m (Maybe (String, Int))
+step (name, value) = do
+  liftIO . print $ name <> " is : " <> show value
+  if value < 10
+    then pure . Just $ (name, value + 1)
     else pure Nothing
+
+makeResource :: (MonadResource m) => String -> Int -> m (String, Int)
+makeResource name value = do
+  name <- makeRes "a"
+  value <- makeRes 0
+  pure (name, value)
 
 testRes :: IO ()
 testRes = runResourceT $ do
-  res <- makeRes 1
+  res <- makeResource "a" 0
   let fps = 1
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just $ res
 
@@ -224,22 +230,23 @@ someFunc = runResourceT $ do
   texturePresent <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   -- resource load end
   
+  let fps = 1
+  let sync = 0
   runResourceT $ do
     V2 width height <- SDL.vkGetDrawableSize window
     let extent = Extent2D (fromIntegral width) (fromIntegral height)
     swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
     commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
     liftIO $ print $ V.map commandBufferHandle commandBuffers
-    let frameSize = fromIntegral . length $ commandBuffers
- 
+    let frameSize = fromIntegral . length $ framebuffers
+      
 
   
     mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
     SyncResource {..} <- withSyncResource device framebuffers
 
-    let fps = 1
-    let sync = 0
+
     liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (Frame {..}, swapchainRes)
   return undefined
 
