@@ -137,6 +137,10 @@ promoteTo = \case
   KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -> Just API_VERSION_1_1
   _ -> Nothing
 
+data EvenException = EvenException deriving (Show)
+
+instance Exception EvenException
+
 makeRes :: (Show a, MonadResource m) => a -> m a
 makeRes x = do
   _ <- allocate_ (liftIO . pure $ x) (liftIO . print $ "release " <> show x)
@@ -144,10 +148,13 @@ makeRes x = do
 
 step :: (MonadIO m) => (String, Int) -> m (Maybe (String, Int))
 step (name, value) = do
-  liftIO . print $ name <> " is : " <> show value
-  if value < 10
-    then pure . Just $ (name, value + 1)
-    else pure Nothing
+  if odd value
+    then throw EvenException
+    else if value < 10
+         then do
+           liftIO . print $ name <> " is : " <> show value
+           pure . Just $ (name, value + 1)
+         else pure Nothing
 
 makeResource :: (MonadResource m) => String -> Int -> m (String, Int)
 makeResource name value = do
