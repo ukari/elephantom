@@ -163,10 +163,13 @@ makeResource name value = do
   pure (name, value)
 
 testRes :: IO ()
-testRes = runResourceT $ do
-  res <- makeResource "a" 0
+testRes = do
   let fps = 1
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just $ res
+  resCont $ liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just 
+
+resCont g = runResourceT $ do
+  res <- makeResource "a" 0
+  g res
 
 testResH :: (Show r1) => r1 -> (String -> IO ()) -> IO ()
 testResH x f = runResourceT $ do
