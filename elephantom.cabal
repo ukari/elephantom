@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 00295aa6df92931d8193f466d5d6d6a7d54730d0ff8d60d6300059f965858343
+-- hash: d25e1800d515bb45ac86938b7100bd345a0d6b07f6413f4dbbd7dfe66e39f73d
 
 name:           elephantom
 version:        0.1.0.0
@@ -79,6 +79,7 @@ library
     , time
     , transformers
     , typed-process
+    , unliftio-core
     , vector
     , vector-algorithms
     , vulkan

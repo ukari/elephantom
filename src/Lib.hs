@@ -98,6 +98,7 @@ import Control.Applicative ((<|>), Applicative (..), optional)
 import Control.Monad (liftM2, join, forever)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Trans.Resource (MonadResource, ResourceT, ReleaseKey, runResourceT, allocate, allocate_, release, register, liftResourceT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
@@ -165,8 +166,9 @@ makeResource name value = do
 testRes :: IO ()
 testRes = do
   let fps = 1
-  resCont $ liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just 
+  resCont $ liftIO . S.drainWhile isJust . S.drop 1 . asyncly . constRate fps . S.iterateM (maybe (pure Nothing) step) . pure . Just
 
+resCont :: MonadUnliftIO m => ((String, Int) -> ResourceT m a) -> m a
 resCont g = runResourceT $ do
   res <- makeResource "a" 0
   g res
@@ -246,18 +248,16 @@ someFunc = runResourceT $ do
     V2 width height <- SDL.vkGetDrawableSize window
     let extent = Extent2D (fromIntegral width) (fromIntegral height)
     swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
-    commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool framebuffers
-    liftIO $ print $ V.map commandBufferHandle commandBuffers
     let frameSize = fromIntegral . length $ framebuffers
-      
+    commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool frameSize
+    liftIO $ print $ V.map commandBufferHandle commandBuffers
 
-  
     mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
     SyncResource {..} <- withSyncResource device framebuffers
+    let frame = Frame {..}
 
-
-    liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (Frame {..}, swapchainRes)
+    liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (frame, swapchainRes)
   return undefined
 
 data Frame = Frame
@@ -1080,12 +1080,12 @@ transitionImageLayout commandBuffer image oldLayout newLayout = do
         } :: ImageMemoryBarrier '[]) ]
     _ -> throw VulkanLayoutTransitionUnsupport
 
-withCommandBuffers :: Device -> CommandPool -> V.Vector Framebuffer -> Managed (V.Vector CommandBuffer)
-withCommandBuffers device commandPool framebuffers =
+withCommandBuffers :: Device -> CommandPool -> Word32 -> Managed (V.Vector CommandBuffer)
+withCommandBuffers device commandPool frameSize =
   snd <$> Vulkan.withCommandBuffers device zero
     { commandPool = commandPool
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
-    , commandBufferCount = fromIntegral . length $ framebuffers
+    , commandBufferCount = frameSize
     } allocate
 
 data Present = Present
