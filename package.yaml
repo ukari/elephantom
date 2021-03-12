@@ -31,7 +31,6 @@ library:
   - template-haskell
   - streamly
   - reflex
-  - elerea
   - time
   - dependent-sum
   - microlens-platform

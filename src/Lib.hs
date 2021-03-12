@@ -10,6 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 -- sugar
 --{-# LANGUAGE PatternSynonyms #-}
@@ -85,7 +86,6 @@ import qualified Reflex as R
 import Reflex.Host.Headless (MonadHeadlessApp, runHeadlessApp)
 import Reflex.Host.Class (MonadReflexHost, runHostFrame, fireEventsAndRead, fireEvents)
 import Reflex.Workflow (Workflow (..))
-import FRP.Elerea.Param
 import Control.Algebra
 import Control.Carrier.Lift
 import Control.Carrier.Reader
@@ -113,10 +113,32 @@ import Shader
 import Offset
 import qualified SpirV
 
-type Singal a = forall t m . (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)) => m (R.Event t a)
+-- type Signal a = forall t m . (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)) => m (R.Event t a)
 
-type Varing a = forall t m . (Reflex t, MonadHold t m, MonadFix m) => m (Behavior t a)
+-- type Varing a = forall t m . (Reflex t, MonadHold t m, MonadFix m) => m (Behavior t a)
 
+-- class (Reflex t, MonadHold t m, MonadFix m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)) => Signal t m where
+
+-- class (Reflex t, MonadHold t m, MonadFix m) => Varing t m where
+
+eventr :: (Reflex t, MonadHold t m, MonadFix m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), MonadIO m) => m (R.Event t TickInfo)
+eventr = do
+  cur <- liftIO getCurrentTime
+  tickLossy 1 cur
+
+testDyn :: (Reflex t, MonadHold t m, MonadFix m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
+testDyn e = do
+  let ev = fromIntegral . _tickInfo_n <$> e
+  foldDyn const 0 ev
+
+test :: IO ()
+test = runHeadlessApp $ do
+  ev <- eventr
+  a <- testDyn ev
+  v <- R.sample . current $ a
+  liftIO . print $ v
+  performEvent_ $ liftIO . print <$> updated a
+  pure never
 
 
 appInfo :: ApplicationInfo
