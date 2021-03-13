@@ -11,6 +11,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 -- sugar
 --{-# LANGUAGE PatternSynonyms #-}
@@ -113,31 +114,48 @@ import Shader
 import Offset
 import qualified SpirV
 
--- type Signal a = forall t m . (Reflex t, MonadHold t m, MonadFix m, MonadIO m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)) => m (R.Event t a)
+type Signal t m = (Reflex t, MonadHold t m, MonadFix m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m))
 
--- type Varing a = forall t m . (Reflex t, MonadHold t m, MonadFix m) => m (Behavior t a)
+type Varing t m = (Reflex t, MonadHold t m, MonadFix m)
 
--- class (Reflex t, MonadHold t m, MonadFix m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m)) => Signal t m where
-
--- class (Reflex t, MonadHold t m, MonadFix m) => Varing t m where
-
-eventr :: (Reflex t, MonadHold t m, MonadFix m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m), MonadIO m) => m (R.Event t TickInfo)
+eventr :: (Signal t m, MonadIO m) => m (R.Event t TickInfo)
 eventr = do
   cur <- liftIO getCurrentTime
   tickLossy 1 cur
 
-testDyn :: (Reflex t, MonadHold t m, MonadFix m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
+ticker :: (Signal t m, MonadIO m, Integral a) => a -> m (R.Event t TickInfo)
+ticker duration = do
+  cur <- liftIO getCurrentTime
+  tickLossy (fromIntegral duration) cur
+
+tick :: (Signal t m, MonadIO m, Integral a) => R.Event t a -> m (R.Event t TickInfo)
+tick duration = do
+  --e <- (fmap (\x -> ticker x) duration)
+  --e <- (switchHold (never)) =<< (fmap (\x -> ticker x) duration)
+  
+  undefined
+
+testTick :: (Signal t m, MonadIO m, Integral a) => R.Event t a -> (R.Event t (m (R.Event t TickInfo)))
+testTick duration =  do
+  ticker <$> duration
+
+testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
 testDyn e = do
   let ev = fromIntegral . _tickInfo_n <$> e
   foldDyn const 0 ev
 
 test :: IO ()
 test = runHeadlessApp $ do
-  ev <- eventr
-  a <- testDyn ev
-  v <- R.sample . current $ a
-  liftIO . print $ v
-  performEvent_ $ liftIO . print <$> updated a
+  --(tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
+  e <- eventr
+  let tickConfigEvent = _tickInfo_n <$> e
+  dy <- foldDyn (+) 0 tickConfigEvent
+  te <- tick tickConfigEvent
+  --ev <- throttle 1 =<< eventr
+  --let a = testDyn (tick dy)
+  -- v <- R.sample . current $ a
+  -- liftIO . print $ v
+  -- performEvent_ $ liftIO . print <$> updated a
   pure never
 
 
@@ -158,6 +176,9 @@ promoteTo = \case
   KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -> Just API_VERSION_1_1
   KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -> Just API_VERSION_1_1
   KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -> Just API_VERSION_1_1
+  EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME -> Just API_VERSION_1_2
+  KHR_MAINTENANCE3_EXTENSION_NAME -> Just API_VERSION_1_1
+  KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME -> Just API_VERSION_1_2
   _ -> Nothing
 
 data EvenException = EvenException deriving (Show)
@@ -666,6 +687,14 @@ withDevice phys indices = do
         [ EXT_MEMORY_BUDGET_EXTENSION_NAME -- vmaGetBudget
         , KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -- vma use it automatically, promoted to API_VERSION_1_1
         , KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -- dependency of KHR_DEDICATED_ALLOCATION_EXTENSION_NAME, promoted to API_VERSION_1_1
+        -- KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME
+        -- , EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
+        -- , KHR_MAINTENANCE3_EXTENSION_NAME
+        -- , KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
+        -- , KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
+        -- , KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME
+        -- , KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
+        -- , EXT_MEMORY_BUDGET_EXTENSION_NAME
         ]
   let optionalFeatures =
         [ RequireDeviceFeature
