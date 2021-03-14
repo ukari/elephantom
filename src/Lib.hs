@@ -146,7 +146,7 @@ test = runHeadlessApp $ do
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
   e <- eventr
   --let tickConfigEvent = _tickInfo_n <$> e
-  dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (fromIntegral . _tickInfo_n <$> e)
+  dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
   te <- tick tickConfigEvent
   --ev <- throttle 1 =<< eventr
   --let a = testDyn (tick dy)
