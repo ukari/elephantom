@@ -93,10 +93,10 @@ import Control.Carrier.Reader
 import Control.Carrier.State.Strict hiding (modify)
 import Control.Effect.Throw (throwError)
 import Control.Effect.Exception (throw, catch, catchJust, try, tryJust)
-import Control.Applicative (liftA2)
+import Control.Applicative (liftA, liftA2)
 import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
-import Control.Monad (liftM2, join, forever)
+import Control.Monad (liftM, liftM2, join, forever)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
@@ -128,16 +128,13 @@ ticker duration = do
   cur <- liftIO getCurrentTime
   tickLossy (fromIntegral duration) cur
 
-tick :: (Signal t m, MonadIO m, Integral a) => R.Event t a -> m (R.Event t TickInfo)
-tick duration = do
-  --e <- (fmap (\x -> ticker x) duration)
-  --e <- (switchHold (never)) =<< (fmap (\x -> ticker x) duration)
-  
-  undefined
+tick :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => R.Event t a -> m (R.Event t TickInfo)
+tick durationE = do
+  (_a, be) <- runWithReplace eventr (ticker <$> durationE)
+  switchHold never be
 
-testTick :: (Signal t m, MonadIO m, Integral a) => R.Event t a -> (R.Event t (m (R.Event t TickInfo)))
-testTick duration =  do
-  ticker <$> duration
+tickImme :: (Signal t m, MonadIO m, Integral a) => R.Event t a -> R.Event t (m (R.Event t TickInfo))
+tickImme durationE = ticker <$> durationE
 
 testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
 testDyn e = do
@@ -146,16 +143,19 @@ testDyn e = do
 
 test :: IO ()
 test = runHeadlessApp $ do
-  --(tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
-  e <- eventr
-  let tickConfigEvent = _tickInfo_n <$> e
+  (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
+  --e <- eventr
+  --let tickConfigEvent = _tickInfo_n <$> e
   dy <- foldDyn (+) 0 tickConfigEvent
   te <- tick tickConfigEvent
   --ev <- throttle 1 =<< eventr
   --let a = testDyn (tick dy)
   -- v <- R.sample . current $ a
   -- liftIO . print $ v
-  -- performEvent_ $ liftIO . print <$> updated a
+  liftIO $ tickConfigTrigger 1
+  performEvent_ $ (\v -> do
+                      liftIO $ tickConfigTrigger 4
+                      liftIO . print $ v) <$> te
   pure never
 
 
