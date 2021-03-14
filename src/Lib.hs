@@ -130,7 +130,7 @@ ticker duration = do
 
 tick :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => R.Event t a -> m (R.Event t TickInfo)
 tick durationE = do
-  (_a, be) <- runWithReplace eventr (ticker <$> durationE)
+  (_a, be) <- runWithReplace (traceEvent "now" <$> now) (ticker <$> durationE)
   switchHold never be
 
 testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
