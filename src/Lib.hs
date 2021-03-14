@@ -121,7 +121,7 @@ type Varing t m = (Reflex t, MonadHold t m, MonadFix m)
 eventr :: (Signal t m, MonadIO m) => m (R.Event t TickInfo)
 eventr = do
   cur <- liftIO getCurrentTime
-  tickLossy 1 cur
+  tickLossy 5 cur
 
 ticker :: (Signal t m, MonadIO m, Integral a) => a -> m (R.Event t TickInfo)
 ticker duration = do
@@ -144,18 +144,17 @@ testDyn e = do
 test :: IO ()
 test = runHeadlessApp $ do
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
-  --e <- eventr
+  e <- eventr
   --let tickConfigEvent = _tickInfo_n <$> e
-  dy <- foldDyn (+) 0 tickConfigEvent
+  dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (fromIntegral . _tickInfo_n <$> e)
   te <- tick tickConfigEvent
   --ev <- throttle 1 =<< eventr
   --let a = testDyn (tick dy)
   -- v <- R.sample . current $ a
   -- liftIO . print $ v
   liftIO $ tickConfigTrigger 1
-  performEvent_ $ (\v -> do
-                      liftIO $ tickConfigTrigger 4
-                      liftIO . print $ v) <$> te
+  performEvent_ $ liftIO . tickConfigTrigger <$> (traceEvent "hi" $ updated dy)
+  performEvent_ $ liftIO . print <$> te
   pure never
 
 
