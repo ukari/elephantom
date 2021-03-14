@@ -133,9 +133,6 @@ tick durationE = do
   (_a, be) <- runWithReplace eventr (ticker <$> durationE)
   switchHold never be
 
-tickImme :: (Signal t m, MonadIO m, Integral a) => R.Event t a -> R.Event t (m (R.Event t TickInfo))
-tickImme durationE = ticker <$> durationE
-
 testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
 testDyn e = do
   let ev = fromIntegral . _tickInfo_n <$> e
@@ -148,15 +145,10 @@ test = runHeadlessApp $ do
   --let tickConfigEvent = _tickInfo_n <$> e
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
   te <- tick tickConfigEvent
-  --ev <- throttle 1 =<< eventr
-  --let a = testDyn (tick dy)
-  -- v <- R.sample . current $ a
-  -- liftIO . print $ v
   liftIO $ tickConfigTrigger 1
-  performEvent_ $ liftIO . tickConfigTrigger <$> (traceEvent "hi" $ updated dy)
+  performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
   performEvent_ $ liftIO . print <$> te
   pure never
-
 
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing
