@@ -98,6 +98,7 @@ import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional)
 import Control.Monad (liftM, liftM2, join, forever)
 import Control.Monad.Trans.Cont (ContT)
+import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Trans.Resource (MonadResource, ResourceT, ReleaseKey, runResourceT, allocate, allocate_, release, register, liftResourceT)
@@ -130,7 +131,7 @@ ticker duration = do
 
 tick :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => R.Event t a -> m (R.Event t TickInfo)
 tick durationE = do
-  (_a, be) <- runWithReplace (traceEvent "now" <$> now) (ticker <$> durationE)
+  (_, be) <- runWithReplace (pure ()) (ticker <$> durationE)
   switchHold never be
 
 testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
@@ -145,7 +146,7 @@ test = runHeadlessApp $ do
   --let tickConfigEvent = _tickInfo_n <$> e
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
   te <- tick tickConfigEvent
-  liftIO $ tickConfigTrigger 1
+  --liftIO $ tickConfigTrigger 1
   performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
   performEvent_ $ liftIO . print <$> te
   pure never
