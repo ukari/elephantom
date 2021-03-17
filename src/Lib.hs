@@ -129,10 +129,12 @@ ticker duration = do
   cur <- liftIO getCurrentTime
   tickLossy (fromIntegral duration) cur
 
-tick :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => R.Event t a -> m (R.Event t TickInfo)
-tick durationE = do
-  be <- snd <$> runWithReplace (pure ()) (ticker <$> durationE)
-  switchHold (traceEvent "never" never) be
+tick :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => Dynamic t a -> m (R.Event t TickInfo)
+tick durationD = do
+  be <- snd <$> runWithReplace (pure ()) (ticker <$> updated durationD)
+  initial <- R.sample . current $ durationD
+  initialE <- ticker initial
+  switchHold initialE be
 
 testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
 testDyn e = do
@@ -145,8 +147,8 @@ test = runHeadlessApp $ do
   e <- eventr
   --let tickConfigEvent = _tickInfo_n <$> e
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
-  te <- tick tickConfigEvent
-  liftIO $ tickConfigTrigger 1
+  tickDyn <- holdDyn 1 tickConfigEvent
+  te <- tick (traceDynWith show tickDyn)
   performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
   performEvent_ $ liftIO . print <$> te
   pure never
