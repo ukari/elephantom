@@ -37,6 +37,9 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
 import Data.Aeson --(decode, eitherDecode)
 import Data.Vector (Vector)
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Vector as V
 import System.FilePath ((</>))
 import System.Process.Typed (proc, readProcess)
@@ -55,13 +58,13 @@ import Control.Monad (join, ap)
 import Debug.Trace (traceShow)
 
 data EntryPoint = EntryPoint
-  { name :: String
-  , mode :: String
+  { name :: Text
+  , mode :: ShaderStage
   } deriving (Show, Generic, FromJSON, ToJSON)
 
 data Input = Input
-  { type' :: String
-  , name :: String
+  { type' :: Text
+  , name :: Text
   , location :: Int
   , array :: Maybe (Vector Int)
   } deriving (Show, Generic)
@@ -88,15 +91,15 @@ instance ToJSON Input where
     )
 
 data Ubo = Ubo
-  { name :: String
+  { name :: Text
   , set :: Int
   , binding :: Int
   , array :: Maybe (Vector Int)
   } deriving (Show, Generic, FromJSON, ToJSON)
 
 data Texture = Texture
-  { type' :: String
-  , name :: String
+  { type' :: Text
+  , name :: Text
   , set :: Int
   , binding :: Int
   , array :: Maybe (Vector Int)
@@ -210,6 +213,13 @@ instance Show ShaderStage where
     Task -> "task"
     Mesh -> "mesh"
 
+instance FromJSON ShaderStage where
+  parseJSON = withText "mode" (pure . fromString . T.unpack)
+
+instance ToJSON ShaderStage where
+  toJSON = String . T.pack . show
+  toEncoding = toEncoding . show
+
 convertStage :: ShaderStage -> ShaderStageFlagBits
 convertStage = \case
   Vert -> SHADER_STAGE_VERTEX_BIT
@@ -256,7 +266,7 @@ makePipelineShaderStageCreateInfo :: ShaderStage -> ShaderModule -> EntryPoint -
 makePipelineShaderStageCreateInfo stage shaderModule EntryPoint {..} = zero
   { stage = convertStage stage
   , module' = shaderModule
-  , name = B.pack name
+  , name = B.pack . T.unpack $ name
   }
 
 makePipelineShaderStageCreateInfos :: ShaderStage -> Vector EntryPoint -> ShaderModule -> Vector (PipelineShaderStageCreateInfo '[])
@@ -287,7 +297,7 @@ convertTextureDescriptorType = \case
 makeTextureDescriptorSetLayoutBinding :: ShaderStage -> Texture -> (Int, DescriptorSetLayoutBinding)
 makeTextureDescriptorSetLayoutBinding stage Texture {..} = (set, zero
   { binding = fromIntegral binding
-  , descriptorType = convertTextureDescriptorType . fromString $ type'
+  , descriptorType = convertTextureDescriptorType . fromString . T.unpack $ type'
   , descriptorCount = maybe 1 (V.sum . (fromIntegral <$>)) array
   , stageFlags = convertStage stage
   })
@@ -374,7 +384,7 @@ makeVertexInputBindingDescription (binding, stride) = zero
 makeVertexAttribute :: Input -> Vector VertexAttribute
 makeVertexAttribute Input {..} = do
   let count = maybe 1 V.sum array :: Int
-  let (size, format) = convertVertexAttributeType . fromString $ type'
+  let (size, format) = convertVertexAttributeType . fromString . T.unpack $ type'
   V.map (\i -> VertexAttribute
     { binding = 0
     , location = fromIntegral . (+ location) $ i
@@ -397,12 +407,12 @@ makeVertexInputAttributeDescription offset VertexAttribute {..} = (offset + size
   , format
   })
 
-reflect :: MonadIO m => ShaderStage -> "code" ::: String -> m (B.ByteString, BL.ByteString)
+reflect :: MonadIO m => ShaderStage -> "code" ::: Text -> m (B.ByteString, BL.ByteString)
 reflect shaderStage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   let stage = show shaderStage
   let shader = dir </> "glsl." <> stage
   let spv = dir </> stage <> ".spv"
-  writeFile shader code
+  T.writeFile shader code
   (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", stage, "-V", shader, "-o", spv]
   spirv <- B.readFile spv
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
@@ -415,7 +425,7 @@ reflect' spirv = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
   pure reflectionRaw
 
-reflection :: MonadIO m => ShaderStage -> "code" ::: String -> m (Shader, Reflection)
+reflection :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Shader, Reflection)
 reflection stage code = do
   (spirv, reflectionRaw) <- reflect stage code
   case decode reflectionRaw of
@@ -430,9 +440,9 @@ reflection' spirv = do
     Nothing -> error "fail to reflect"
 
 getShaderStage :: Reflection -> ShaderStage
-getShaderStage Reflection {..} = fromString . mode . V.head $ entryPoints
+getShaderStage Reflection {..} = mode . V.head $ entryPoints
 
-testVert :: String
+testVert :: Text
 testVert = [qnb|
   #version 450
   #extension GL_ARB_separate_shader_objects : enable
@@ -462,7 +472,7 @@ testVert = [qnb|
   }
   |]
 
-testFrag :: String
+testFrag :: Text
 testFrag = [qnb|
   #version 450
 
