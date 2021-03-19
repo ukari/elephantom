@@ -32,10 +32,10 @@ import Vulkan.Core10.DescriptorSet (DescriptorSetLayoutBinding (..), DescriptorS
 import Vulkan.Core10.Pipeline (ShaderStageFlagBits (..), PipelineShaderStageCreateInfo (..), PipelineVertexInputStateCreateInfo (..),  VertexInputBindingDescription (..), VertexInputAttributeDescription (..))
 
 import Foreign.Storable (Storable (sizeOf, alignment))
-import GHC.Generics
+import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
-import Data.Aeson --(decode, eitherDecode)
+import Data.Aeson ((.=), (.:), (.:?), FromJSON (..), ToJSON (..), Value (String), decode, object, pairs, withObject, withText)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
