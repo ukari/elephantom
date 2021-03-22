@@ -87,6 +87,7 @@ import qualified Reflex as R
 import Reflex.Host.Headless (MonadHeadlessApp, runHeadlessApp)
 import Reflex.Host.Class (MonadReflexHost, runHostFrame, fireEventsAndRead, fireEvents)
 import Reflex.Workflow (Workflow (..))
+import Reflex.Network (networkHold)
 import Control.Algebra
 import Control.Carrier.Lift
 import Control.Carrier.Reader
@@ -136,6 +137,12 @@ tick durationD = do
   initialE <- ticker initial
   switchHold initialE be
 
+tick' :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => Dynamic t a -> m (R.Event t TickInfo)
+tick' durationD = do
+  initial <- R.sample . current $ durationD
+  be <- networkHold (ticker initial) (ticker <$> updated durationD)
+  pure . switchDyn $ be
+
 testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
 testDyn e = do
   let ev = fromIntegral . _tickInfo_n <$> e
@@ -145,10 +152,9 @@ test :: IO ()
 test = runHeadlessApp $ do
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
   e <- eventr
-  --let tickConfigEvent = _tickInfo_n <$> e
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
   tickDyn <- holdDyn 1 tickConfigEvent
-  te <- tick (traceDynWith show tickDyn)
+  te <- tick' (traceDynWith show tickDyn)
   performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
   performEvent_ $ liftIO . print <$> te
   pure never
