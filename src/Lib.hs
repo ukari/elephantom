@@ -75,7 +75,7 @@ import Data.Maybe (fromMaybe, isNothing, isJust)
 import Data.Bool (bool)
 import Data.List ((\\), group, sort, sortOn, groupBy)
 import Data.Function (on)
-import Data.Time (getCurrentTime)
+import Data.Time (addUTCTime, getCurrentTime)
 import Data.Functor ((<&>))
 import Data.Dependent.Sum (DSum ((:=>)))
 
@@ -123,12 +123,18 @@ type Varing t m = (Reflex t, MonadHold t m, MonadFix m)
 eventr :: (Signal t m, MonadIO m) => m (R.Event t TickInfo)
 eventr = do
   cur <- liftIO getCurrentTime
-  tickLossy 5 cur
+  tickLossy 6 cur
 
 ticker :: (Signal t m, MonadIO m, Integral a) => a -> m (R.Event t TickInfo)
 ticker duration = do
   cur <- liftIO getCurrentTime
   tickLossy (fromIntegral duration) cur
+
+ticker' :: (Signal t m, MonadIO m, Integral a) => a -> m (R.Event t TickInfo)
+ticker' duration = do
+  cur <- liftIO getCurrentTime
+  d <- clockLossy (fromIntegral duration) cur
+  pure . updated $ d
 
 tick :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => Dynamic t a -> m (R.Event t TickInfo)
 tick durationD = do
@@ -143,21 +149,26 @@ tick' durationD = do
   be <- networkHold (ticker initial) (ticker <$> updated durationD)
   pure . switchDyn $ be
 
-testDyn :: (Varing t m, MonadIO m) => R.Event t TickInfo -> m (Dynamic t Int)
-testDyn e = do
-  let ev = fromIntegral . _tickInfo_n <$> e
-  foldDyn const 0 ev
-
 test :: IO ()
 test = runHeadlessApp $ do
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
   e <- eventr
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
+
   tickDyn <- holdDyn 1 tickConfigEvent
-  te <- tick' (traceDynWith show tickDyn)
+
+  te <- switchDynamic tickDyn ticker'
+  postBuild <- getPostBuild
   performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
-  performEvent_ $ liftIO . print <$> te
+  performEvent_ $ liftIO . print <$> leftmost [postBuild, () <$ te]
   pure never
+
+switchDynamic :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => Dynamic t a -> (a -> m (R.Event t b)) -> m (R.Event t b)
+switchDynamic d f = do
+  initial <- R.sample . current $ d
+  initialE <- f initial
+  e <- snd <$> runWithReplace (pure ()) (f <$> updated d)
+  switchHold initialE e
 
 appInfo :: ApplicationInfo
 appInfo = zero { applicationName = Nothing
