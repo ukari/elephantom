@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ab1d916a3b3736a7c07ad85e62d1a9806830f33015c89ae4c29be0837cebd908
+-- hash: 2ec3e70ec22614a1463d4ef04b1ba4b6b9c3004a82453c8cc1f5d58ce1b10b00
 
 name:           elephantom
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
       Orphan
       Shader
       SpirV
+      Test
   other-modules:
       Paths_elephantom
   hs-source-dirs:
