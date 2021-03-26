@@ -3,6 +3,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -35,7 +38,8 @@ import Foreign.Storable (Storable (sizeOf, alignment))
 import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
-import Data.Aeson ((.=), (.:), (.:?), FromJSON (..), ToJSON (..), Value (String), decode, object, pairs, withObject, withText)
+import Data.Aeson ((.=), (.:), (.:?), FromJSON (..), ToJSON (..), Value (String), decode, decode', encode, eitherDecode, object, pairs, withObject, withText)
+import Data.Aeson.Types (prependFailure, typeMismatch, unexpected, parseMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -44,9 +48,9 @@ import qualified Data.Vector as V
 import System.FilePath ((</>))
 import System.Process.Typed (proc, readProcess)
 import System.IO.Temp (withSystemTempDirectory)
+import System.IO.Unsafe (unsafePerformIO)
 import Text.InterpolatedString.QM (qnb)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.String (IsString (..))
 import Data.List ((\\), group, sort, sortOn, groupBy)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -55,6 +59,7 @@ import Data.Maybe (fromMaybe, catMaybes)
 import Data.Word (Word32)
 import Control.Applicative (liftA2)
 import Control.Monad (join, ap)
+import Control.Exception (Exception (..), SomeException (..), throw, catch, handle, evaluate)
 import Debug.Trace (traceShow)
 
 data EntryPoint = EntryPoint
@@ -137,29 +142,50 @@ data Reflection = Reflection
   } deriving (Show, Generic, FromJSON, ToJSON)
 
 test :: MonadIO m => m (Maybe Reflection)
-test = decode . snd <$> reflect "vert" testVert
+test = decode . snd <$> reflect (from "vert") testVert
+
+test0 :: Maybe Reflection
+test0 = Just (Reflection {entryPoints = [EntryPoint {name = "main", mode = Frag}], inputs = Just [Input {type' = "vec2", name = "fragTexCoord", location = 1, array = Nothing},Input {type' = "vec4", name = "fragColor", location = 0, array = Nothing}], textures = Just [Texture {type' = "sampler2D", name = "texSampler", set = 0, binding = 1, array = Just [2]},Texture {type' = "sampler2D", name = "texSampler2", set = 3, binding = 1, array = Nothing}], ubos = Nothing})
+
+test0Encode :: BL.ByteString
+test0Encode = "{\"textures\":[{\"set\":0,\"array\":[2],\"name\":\"texSampler\",\"type\":\"sampler2D\",\"binding\":1},{\"set\":3,\"array\":null,\"name\":\"texSampler2\",\"type\":\"sampler2D\",\"binding\":1}],\"inputs\":[{\"location\":1,\"array\":null,\"name\":\"fragTexCoord\",\"type\":\"vec2\"},{\"location\":0,\"array\":null,\"name\":\"fragColor\",\"type\":\"vec4\"}],\"ubos\":null,\"entryPoints\":[{\"mode\":\"frag\",\"name\":\"main\"}]}"
 
 test1 :: MonadIO m => m (Maybe Reflection)
-test1 = decode . snd <$> reflect "frag" testFrag
+test1 = decode . snd <$> reflect (from "frag") testFrag
 
 test2 :: MonadIO m => m ()
 test2 =  do
-  vert <- reflection (fromString "vert") testVert
-  frag <- reflection (fromString "frag") testFrag
+  vert <- reflection (from "vert") testVert
+  frag <- reflection (from "frag") testFrag
   liftIO . print . shaderModuleCreateInfo . makeShaderInfo $ vert
   liftIO . print . shaderModuleCreateInfo . makeShaderInfo $ frag
 
 test3 :: MonadIO m => m ()
 test3 = do
-  vert <- reflection (fromString "vert") testVert
-  frag <- reflection (fromString "frag") testFrag
+  vert <- reflection (from "vert") testVert
+  frag <- reflection (from "frag") testFrag
   liftIO . print . makeDescriptorInfo $ V.fromList [vert, frag]
 
 test4 :: MonadIO m => m ()
 test4 = do
-  vert <- reflection (fromString "vert") testVert
-  frag <- reflection (fromString "frag") testFrag
+  vert <- reflection (from "vert") testVert
+  frag <- reflection (from "frag") testFrag
   liftIO . print . makeInputInfo $ V.fromList [vert, frag]
+
+data ConvertException = ConvertException Text Text
+  deriving (Show)
+
+instance Exception ConvertException
+
+class Convert a where
+  from :: Text -> a
+  to :: a -> Text
+
+checkConvert :: forall a . Convert a => Text -> Bool
+checkConvert x = unsafePerformIO $ handle (\(ConvertException _raw _err) -> pure True) (evaluate . flip seq False . (from :: Text -> a) $ x)
+
+convertErrorMessage :: forall a . Convert a => Text -> Text
+convertErrorMessage x = unsafePerformIO $ handle (\(ConvertException _raw err) -> pure err) (evaluate . flip seq "" . (from :: Text -> a) $ x)
 
 data ShaderStage
   = Vert
@@ -176,10 +202,10 @@ data ShaderStage
   | Rcall
   | Task
   | Mesh
-  deriving (Eq)
+  deriving (Eq, Show)
 
-instance IsString ShaderStage where
-  fromString = \case
+instance Convert ShaderStage where
+  from = \case
     "vert" -> Vert
     "frag" -> Frag
     "comp" -> Comp
@@ -194,10 +220,8 @@ instance IsString ShaderStage where
     "rcall" -> Rcall
     "task" -> Task
     "mesh" -> Mesh
-    unsupport -> error $ "ShaderStage not support '" <> unsupport <> "'"
-
-instance Show ShaderStage where
-  show = \case
+    unsupport -> throw $ ConvertException unsupport $ "ShaderStage not support '" <> unsupport <> "'"
+  to = \case
     Vert -> "vert"
     Frag -> "frag"
     Comp -> "comp"
@@ -214,11 +238,13 @@ instance Show ShaderStage where
     Mesh -> "mesh"
 
 instance FromJSON ShaderStage where
-  parseJSON = withText "mode" (pure . fromString . T.unpack)
+  parseJSON value@(String x) | checkConvert @ShaderStage x = prependFailure (T.unpack . convertErrorMessage  @ShaderStage $ x) . unexpected $ value
+                             | otherwise = withText "mode" (pure . from) value
+  parseJSON x = withText "mode" (pure . from) x
 
 instance ToJSON ShaderStage where
-  toJSON = String . T.pack . show
-  toEncoding = toEncoding . show
+  toJSON = String . to
+  toEncoding = toEncoding . to
 
 convertStage :: ShaderStage -> ShaderStageFlagBits
 convertStage = \case
@@ -285,10 +311,12 @@ makeUboDescriptorSetLayoutBinding stage Ubo {..} = (set, zero
 data TextureDescriptorType
   = Sampler2D
 
-instance IsString TextureDescriptorType where
-  fromString = \case
+instance Convert TextureDescriptorType where
+  from = \case
     "sampler2D" -> Sampler2D
-    unsupport -> error $ "TextureDescriptorType not support '" <> unsupport <> "'"
+    unsupport -> throw $ ConvertException unsupport $ "TextureDescriptorType not support '" <> unsupport <> "'"
+  to = \case
+    Sampler2D -> "sampler2D"
 
 convertTextureDescriptorType :: TextureDescriptorType -> DescriptorType
 convertTextureDescriptorType = \case
@@ -297,7 +325,7 @@ convertTextureDescriptorType = \case
 makeTextureDescriptorSetLayoutBinding :: ShaderStage -> Texture -> (Int, DescriptorSetLayoutBinding)
 makeTextureDescriptorSetLayoutBinding stage Texture {..} = (set, zero
   { binding = fromIntegral binding
-  , descriptorType = convertTextureDescriptorType . fromString . T.unpack $ type'
+  , descriptorType = convertTextureDescriptorType . from $ type'
   , descriptorCount = maybe 1 (V.sum . (fromIntegral <$>)) array
   , stageFlags = convertStage stage
   })
@@ -325,15 +353,13 @@ data VertexAttributeType
   | Vec3
   | Vec4
 
-instance IsString VertexAttributeType where
-  fromString = \case
+instance Convert VertexAttributeType where
+  from = \case
     "vec2" -> Vec2
     "vec3" -> Vec3
     "vec4" -> Vec4
-    unsupport -> error $ "VertexAttributeType not support '" <> unsupport <> "'"
-
-instance Show VertexAttributeType where
-  show = \case
+    unsupport -> throw $ ConvertException unsupport $ "VertexAttributeType not support '" <> unsupport <> "'"
+  to = \case
     Vec2 -> "vec2"
     Vec3 -> "vec3"
     Vec4 -> "vec4"
@@ -392,7 +418,7 @@ makeVertexAttribute Input {..} = V.map (\i -> VertexAttribute
   ]
   where
     count = maybe 1 V.sum array :: Int
-    (size, format) = convertVertexAttributeType . fromString . T.unpack $ type'
+    (size, format) = convertVertexAttributeType . from $ type'
 
 makeVertexInputAttributeDescriptions :: Vector VertexAttribute -> Vector VertexInputAttributeDescription
 makeVertexInputAttributeDescriptions = V.fromList . join . map process . groupBy ((==) `on` (binding :: VertexAttribute -> Word32)) . V.toList
@@ -410,7 +436,7 @@ makeVertexInputAttributeDescription offset VertexAttribute {..} = (offset + size
 
 reflect :: MonadIO m => ShaderStage -> "code" ::: Text -> m (B.ByteString, BL.ByteString)
 reflect shaderStage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
-  let stage = show shaderStage
+  let stage = T.unpack . to $ shaderStage
   let shader = dir </> "glsl." <> stage
   let spv = dir </> stage <> ".spv"
   T.writeFile shader code
