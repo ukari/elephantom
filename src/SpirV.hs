@@ -67,7 +67,7 @@ data EntryPoint = EntryPoint
   } deriving (Show, Generic, FromJSON, ToJSON)
 
 data Input = Input
-  { type' :: Text
+  { type' :: VertexAttributeType
   , name :: Text
   , location :: Int
   , array :: Maybe (Vector Int)
@@ -102,7 +102,7 @@ data Ubo = Ubo
   } deriving (Show, Generic, FromJSON, ToJSON)
 
 data Texture = Texture
-  { type' :: Text
+  { type' :: TextureDescriptorType
   , name :: Text
   , set :: Int
   , binding :: Int
@@ -144,7 +144,7 @@ test :: MonadIO m => m (Maybe Reflection)
 test = decode . snd <$> reflect (from "vert") testVert
 
 test0 :: Maybe Reflection
-test0 = Just (Reflection {entryPoints = [EntryPoint {name = "main", mode = Frag}], inputs = Just [Input {type' = "vec2", name = "fragTexCoord", location = 1, array = Nothing},Input {type' = "vec4", name = "fragColor", location = 0, array = Nothing}], textures = Just [Texture {type' = "sampler2D", name = "texSampler", set = 0, binding = 1, array = Just [2]},Texture {type' = "sampler2D", name = "texSampler2", set = 3, binding = 1, array = Nothing}], ubos = Nothing})
+test0 = Just (Reflection {entryPoints = [EntryPoint {name = "main", mode = Frag}], inputs = Just [Input {type' = Vec2, name = "fragTexCoord", location = 1, array = Nothing},Input {type' = Vec4, name = "fragColor", location = 0, array = Nothing}], textures = Just [Texture {type' = Sampler2D, name = "texSampler", set = 0, binding = 1, array = Just [2]},Texture {type' = Sampler2D, name = "texSampler2", set = 3, binding = 1, array = Nothing}], ubos = Nothing})
 
 test0Encode :: BL.ByteString
 test0Encode = "{\"textures\":[{\"set\":0,\"array\":[2],\"name\":\"texSampler\",\"type\":\"sampler2D\",\"binding\":1},{\"set\":3,\"array\":null,\"name\":\"texSampler2\",\"type\":\"sampler2D\",\"binding\":1}],\"inputs\":[{\"location\":1,\"array\":null,\"name\":\"fragTexCoord\",\"type\":\"vec2\"},{\"location\":0,\"array\":null,\"name\":\"fragColor\",\"type\":\"vec4\"}],\"ubos\":null,\"entryPoints\":[{\"mode\":\"frag\",\"name\":\"main\"}]}"
@@ -308,6 +308,7 @@ makeUboDescriptorSetLayoutBinding stage Ubo {..} = (set, zero
 
 data TextureDescriptorType
   = Sampler2D
+  deriving (Show)
 
 instance Convert TextureDescriptorType where
   eitherFrom = \case
@@ -316,6 +317,16 @@ instance Convert TextureDescriptorType where
   to = \case
     Sampler2D -> "sampler2D"
 
+instance FromJSON TextureDescriptorType where
+  parseJSON value@(String x) = case eitherFrom @TextureDescriptorType x of
+    Left (ConvertException _e err) -> prependFailure (T.unpack err) . unexpected $ value
+    Right _stage -> withText "type" (pure . from) value
+  parseJSON value = withText "type" (pure . from) value
+
+instance ToJSON TextureDescriptorType where
+  toJSON = String . to
+  toEncoding = toEncoding . to
+
 convertTextureDescriptorType :: TextureDescriptorType -> DescriptorType
 convertTextureDescriptorType = \case
   Sampler2D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
@@ -323,7 +334,7 @@ convertTextureDescriptorType = \case
 makeTextureDescriptorSetLayoutBinding :: ShaderStage -> Texture -> (Int, DescriptorSetLayoutBinding)
 makeTextureDescriptorSetLayoutBinding stage Texture {..} = (set, zero
   { binding = fromIntegral binding
-  , descriptorType = convertTextureDescriptorType . from $ type'
+  , descriptorType = convertTextureDescriptorType type'
   , descriptorCount = maybe 1 (V.sum . (fromIntegral <$>)) array
   , stageFlags = convertStage stage
   })
@@ -350,6 +361,7 @@ data VertexAttributeType
   = Vec2
   | Vec3
   | Vec4
+  deriving (Show)
 
 instance Convert VertexAttributeType where
   eitherFrom = \case
@@ -361,6 +373,16 @@ instance Convert VertexAttributeType where
     Vec2 -> "vec2"
     Vec3 -> "vec3"
     Vec4 -> "vec4"
+
+instance FromJSON VertexAttributeType where
+  parseJSON value@(String x) = case eitherFrom @VertexAttributeType x of
+    Left (ConvertException _e err) -> prependFailure (T.unpack err) . unexpected $ value
+    Right _stage -> withText "type" (pure . from) value
+  parseJSON value = withText "type" (pure . from) value
+
+instance ToJSON VertexAttributeType where
+  toJSON = String . to
+  toEncoding = toEncoding . to
 
 convertVertexAttributeType :: VertexAttributeType -> (Word32, Format)
 convertVertexAttributeType = \case
@@ -416,7 +438,7 @@ makeVertexAttribute Input {..} = V.map (\i -> VertexAttribute
   ]
   where
     count = maybe 1 V.sum array :: Int
-    (size, format) = convertVertexAttributeType . from $ type'
+    (size, format) = convertVertexAttributeType type'
 
 makeVertexInputAttributeDescriptions :: Vector VertexAttribute -> Vector VertexInputAttributeDescription
 makeVertexInputAttributeDescriptions = V.fromList . join . map process . groupBy ((==) `on` (binding :: VertexAttribute -> Word32)) . V.toList
