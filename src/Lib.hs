@@ -35,6 +35,7 @@ import Vulkan hiding (allocate)
 import qualified Vulkan.Core10 as Core10
 import qualified Vulkan.Extensions.VK_KHR_swapchain as Swap
 import Vulkan.Extensions.VK_EXT_acquire_xlib_display
+import Vulkan.Exception
 --import Vulkan.Utils.Debug
 import Vulkan.Utils.ShaderQQ.GLSL.Glslang (vert, frag)
 import Vulkan.Utils.Initialization (createDebugInstanceFromRequirements, createDeviceFromRequirements)
@@ -78,6 +79,8 @@ import Data.Function (on)
 import Data.Time (addUTCTime, getCurrentTime)
 import Data.Functor ((<&>))
 import Data.Dependent.Sum (DSum ((:=>)))
+import System.Mem.Weak
+import System.Mem.StableName
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
@@ -92,11 +95,11 @@ import Control.Algebra
 import Control.Carrier.Lift
 import Control.Carrier.Reader
 import Control.Carrier.State.Strict hiding (modify)
-import Control.Effect.Throw (throwError)
-import Control.Effect.Exception (throw, catch, catchJust, try, tryJust)
-import Control.Applicative (liftA, liftA2)
+--import Control.Carrier.Error.Church (runError)
+--import Control.Effect.Throw (throwError)
+--import Control.Effect.Exception (throw, catch, catchJust, try, tryJust)
 import Control.Arrow ((&&&))
-import Control.Applicative ((<|>), Applicative (..), optional)
+import Control.Applicative ((<|>), Applicative (..), optional, liftA, liftA2)
 import Control.Monad (liftM, liftM2, join, forever)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.Trans.Class (lift)
@@ -107,7 +110,8 @@ import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Monad.Fix (MonadFix)
 import Control.Error.Util (hoistMaybe, failWith)
-import Control.Exception (Exception (..), throw, handleJust)
+import Control.Exception (Exception (..), SomeException (..), throw, handleJust, try, catch)
+import qualified Control.Exception as Ex
 import Control.Concurrent (forkIO, forkOS, threadDelay)
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 
@@ -115,6 +119,12 @@ import GLSL
 import Shader
 import Offset
 import qualified SpirV
+
+testRelease :: IO ()
+testRelease = runResourceT $ do
+  key <- register (print "hi")
+  release key
+  liftIO . print $ "end"
 
 type Signal t m = (Reflex t, MonadHold t m, MonadFix m, PostBuild t m, PerformEvent t m, TriggerEvent t m, MonadIO (Performable m))
 
@@ -154,9 +164,7 @@ test = runHeadlessApp $ do
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
   e <- eventr
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
-
   tickDyn <- holdDyn 1 tickConfigEvent
-
   te <- switchDynamic tickDyn ticker'
   postBuild <- getPostBuild
   performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
@@ -278,7 +286,9 @@ someFunc = runResourceT $ do
   liftIO $ print $ queueHandle transferQueue
   commandPoolRes@CommandPoolResource {..} <- withCommandPoolResource device qIndices
   formats <- snd <$> getPhysicalDeviceSurfaceFormatsKHR phys surf
-  let surfaceFormat = formats ! 0
+  let surfaceFormat = formats ! 1
+  liftIO $ print formats
+  liftIO $ print surfaceFormat
   renderPass <- Lib.withRenderPass device surfaceFormat
 
   -- resource load
@@ -568,6 +578,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
       }
     ] []
   pure $ Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices)
+
 
 type Managed m = MonadResource m
 
