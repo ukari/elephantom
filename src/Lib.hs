@@ -303,10 +303,10 @@ someFunc = runResourceT $ do
 
   shaderRes <- withShaderStages device
   pipelineRes <- Lib.withPipeline device renderPass shaderRes
-  trianglePresent <- loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes
+  trianglePresent <- loadTriangle allocator device queueFamilyIndices shaderRes
   textureShaderRes <- Lib.withTextureShaderStages device
   texturePipelineRes <- Lib.withPipeline device renderPass textureShaderRes
-  texturePresent <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
+  texturePresent <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes
   -- resource load end
   
   let fps = 1
@@ -319,7 +319,7 @@ someFunc = runResourceT $ do
   commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool frameSize
   liftIO $ print $ V.map commandBufferHandle commandBuffers
 
-  mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
+  mapM_ (submitCommand extent renderPass pipelineRes [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
   SyncResource {..} <- withSyncResource device framebuffers
   let frame = Frame {..}
@@ -371,8 +371,8 @@ drawFrame (x@Frame {..}, s@SwapchainResource {..}) = do
     , s
     )
 
-loadTriangle :: Managed m => Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
-loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
+loadTriangle :: Managed m => Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> m Present
+loadTriangle allocator device queueFamilyIndices shaderRes = do
   
   (vertexBuffer, vertexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
@@ -436,10 +436,10 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
       , texelBufferView = []
       }
     ] []
-  pure $ Present (pipeline (pipelineRes :: PipelineResource)) (pipelineLayout (pipelineRes :: PipelineResource)) [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices)
+  pure $ Present [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices)
 
-loadTexture :: Managed m => Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> m Present
-loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes texturePipelineRes = do
+loadTexture :: Managed m => Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> m Present
+loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes = do
   liftIO . print . descriptorSetLayouts $ textureShaderRes
   textureSampler <- withTextureSampler phys device
   textureDescriptorSetResource <- withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes)
@@ -577,7 +577,8 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
         ]
       }
     ] []
-  pure $ Present (pipeline (texturePipelineRes :: PipelineResource)) (pipelineLayout (texturePipelineRes :: PipelineResource)) [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices)
+  pure $ Present [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices)
+
 
 
 type Managed m = MonadResource m
@@ -1166,9 +1167,7 @@ withCommandBuffers device commandPool frameSize =
     } allocate
 
 data Present = Present
-  { pipeline :: !Pipeline
-  , pipelineLayout :: !PipelineLayout
-  , vertexBuffers :: !(V.Vector Buffer)
+  { vertexBuffers :: !(V.Vector Buffer)
   , indexBuffer :: !Buffer
   , descriptorSets :: !(V.Vector DescriptorSet)
   , drawSize :: !Word32
@@ -1177,10 +1176,11 @@ data Present = Present
 submitCommand :: Managed m
               => "renderArea" ::: Extent2D
               -> RenderPass
+              -> PipelineResource
               -> V.Vector Present
               -> (CommandBuffer, Framebuffer)
               -> m ()
-submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
+submitCommand extent@Extent2D {..} renderPass PipelineResource {..} presents (commandBuffer, framebuffer) = do
   let viewports =
         [ Viewport
           { x = 0
