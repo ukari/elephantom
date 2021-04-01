@@ -287,7 +287,7 @@ someFunc = runResourceT $ do
   liftIO $ print $ queueHandle transferQueue
   commandPoolRes@CommandPoolResource {..} <- withCommandPoolResource device qIndices
   formats <- snd <$> getPhysicalDeviceSurfaceFormatsKHR phys surf
-  let surfaceFormat = formats ! 0
+  let surfaceFormat = chooseFormat formats
   liftIO $ print formats
   liftIO $ print surfaceFormat
   renderPass <- Lib.withRenderPass device surfaceFormat
@@ -809,8 +809,10 @@ chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode
 chooseSharingMode indices | length indices == 1 = SHARING_MODE_EXCLUSIVE
                           | otherwise = SHARING_MODE_CONCURRENT
 
-chooseFormat :: V.Vector Format -> Format
-chooseFormat formats = formats ! 0
+chooseFormat :: V.Vector SurfaceFormatKHR -> SurfaceFormatKHR
+chooseFormat formats = fromMaybe (V.head formats) $ V.find isSRGB formats
+  where
+    isSRGB = (==) SurfaceFormatKHR {format = FORMAT_B8G8R8A8_SRGB, colorSpace = COLOR_SPACE_SRGB_NONLINEAR_KHR}
 
 withSwapchain :: Managed m => PhysicalDevice -> Device -> SurfaceKHR -> SurfaceFormatKHR -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> RenderPass -> SwapchainKHR -> m SwapchainResource
 withSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapchain = do
