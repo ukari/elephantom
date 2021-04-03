@@ -38,7 +38,7 @@ import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
 import Data.Aeson ((.=), (.:), (.:?), FromJSON (..), ToJSON (..), Value (String), decode, decode', encode, eitherDecode, object, pairs, withObject, withText)
-import Data.Aeson.Types (prependFailure, typeMismatch, unexpected, parseMaybe)
+import Data.Aeson.Types (prependFailure, typeMismatch, unexpected, parseMaybe, Parser, parseFail)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -170,18 +170,22 @@ test4 = do
   frag <- reflection (from "frag") testFrag
   liftIO . print . makeInputInfo $ V.fromList [vert, frag]
 
-data ConvertException = ConvertException Text Text
+data ConvertException = ConvertException Text
   deriving (Show)
 
 instance Exception ConvertException
 
 class Convert a where
-  eitherFrom :: Text -> Either ConvertException a
+  maybeFrom :: Text -> Maybe a
   from :: Text -> a
-  from x = case eitherFrom x of
-    Left ex -> throw ex
-    Right res -> res
+  from x = fromMaybe (throw $ ConvertException $ "unsupport " <> x) (maybeFrom x)
   to :: a -> Text
+
+withTextMaybe :: String -> (Text -> Maybe a) -> Value -> Parser a
+withTextMaybe label converter = withText label $ \text ->
+  case converter text of
+    Just res -> pure res
+    Nothing -> parseFail $ label <> " unexcept value " <> T.unpack text
 
 data ShaderStage
   = Vert
@@ -201,22 +205,22 @@ data ShaderStage
   deriving (Eq, Show)
 
 instance Convert ShaderStage where
-  eitherFrom = \case
-    "vert" -> Right Vert
-    "frag" -> Right Frag
-    "comp" -> Right Comp
-    "tesc" -> Right Tesc
-    "tese" -> Right Tese
-    "geom" -> Right Geom
-    "rgen" -> Right Rgen
-    "rint" -> Right Rint
-    "rahit" -> Right Rahit
-    "rchit" -> Right Rchit
-    "rmiss" -> Right Rmiss
-    "rcall" -> Right Rcall
-    "task" -> Right Task
-    "mesh" -> Right Mesh
-    unsupport -> Left $ ConvertException unsupport $ "ShaderStage not support '" <> unsupport <> "'"
+  maybeFrom = \case
+    "vert" -> Just Vert
+    "frag" -> Just Frag
+    "comp" -> Just Comp
+    "tesc" -> Just Tesc
+    "tese" -> Just Tese
+    "geom" -> Just Geom
+    "rgen" -> Just Rgen
+    "rint" -> Just Rint
+    "rahit" -> Just Rahit
+    "rchit" -> Just Rchit
+    "rmiss" -> Just Rmiss
+    "rcall" -> Just Rcall
+    "task" -> Just Task
+    "mesh" -> Just Mesh
+    _ -> Nothing
   to = \case
     Vert -> "vert"
     Frag -> "frag"
@@ -234,10 +238,7 @@ instance Convert ShaderStage where
     Mesh -> "mesh"
 
 instance FromJSON ShaderStage where
-  parseJSON value@(String x) = case eitherFrom @ShaderStage x of
-    Left (ConvertException _e err) -> prependFailure (T.unpack $ err <> ", ") . unexpected $ value
-    Right _stage -> withText "mode" (pure . from) value
-  parseJSON value = withText "mode" (pure . from) value
+  parseJSON = withTextMaybe "mode" (maybeFrom @ShaderStage)
 
 instance ToJSON ShaderStage where
   toJSON = String . to
@@ -310,17 +311,14 @@ data TextureDescriptorType
   deriving (Show)
 
 instance Convert TextureDescriptorType where
-  eitherFrom = \case
-    "sampler2D" -> Right Sampler2D
-    unsupport -> Left $ ConvertException unsupport $ "TextureDescriptorType not support '" <> unsupport <> "'"
+  maybeFrom = \case
+    "sampler2D" -> Just Sampler2D
+    _ -> Nothing
   to = \case
     Sampler2D -> "sampler2D"
 
 instance FromJSON TextureDescriptorType where
-  parseJSON value@(String x) = case eitherFrom @TextureDescriptorType x of
-    Left (ConvertException _e err) -> prependFailure (T.unpack $ err <> ", ") . unexpected $ value
-    Right _stage -> withText "type" (pure . from) value
-  parseJSON value = withText "type" (pure . from) value
+  parseJSON = withTextMaybe "type" (maybeFrom @TextureDescriptorType)
 
 instance ToJSON TextureDescriptorType where
   toJSON = String . to
@@ -363,21 +361,18 @@ data VertexAttributeType
   deriving (Show)
 
 instance Convert VertexAttributeType where
-  eitherFrom = \case
-    "vec2" -> Right Vec2
-    "vec3" -> Right Vec3
-    "vec4" -> Right Vec4
-    unsupport -> Left $ ConvertException unsupport $ "VertexAttributeType not support '" <> unsupport <> "'"
+  maybeFrom = \case
+    "vec2" -> Just Vec2
+    "vec3" -> Just Vec3
+    "vec4" -> Just Vec4
+    _ -> Nothing
   to = \case
     Vec2 -> "vec2"
     Vec3 -> "vec3"
     Vec4 -> "vec4"
 
 instance FromJSON VertexAttributeType where
-  parseJSON value@(String x) = case eitherFrom @VertexAttributeType x of
-    Left (ConvertException _e err) -> prependFailure (T.unpack $ err <> ", ") . unexpected $ value
-    Right _stage -> withText "type" (pure . from) value
-  parseJSON value = withText "type" (pure . from) value
+  parseJSON = withTextMaybe "type" (maybeFrom @VertexAttributeType)
 
 instance ToJSON VertexAttributeType where
   toJSON = String . to
