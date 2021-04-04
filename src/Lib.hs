@@ -162,6 +162,10 @@ tick' durationD = do
 
 test :: IO ()
 test = runHeadlessApp $ do
+  cur1 <- liftIO getCurrentTime
+  cur2 <- liftIO getCurrentTime
+  liftIO . print $ cur1
+  liftIO . print $ cur2
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
   e <- eventr
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
@@ -319,14 +323,17 @@ someFunc = runResourceT $ do
   let frameSize = fromIntegral . length $ framebuffers
   commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool frameSize
   liftIO $ print $ V.map commandBufferHandle commandBuffers
-
+  let commandBufferRes = CommandBufferResource
+        { commandPool = graphicsCommandPool
+        , commandBuffers = commandBuffers
+        }
   mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
   SyncResource {..} <- withSyncResource device framebuffers
   let frame = Frame {..}
 
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (frame, swapchainRes)
-  
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (frame, commandBufferRes, swapchainRes)
+  deviceWaitIdleSafe device
   return undefined
 
 data Frame = Frame
@@ -336,13 +343,14 @@ data Frame = Frame
   , imageAvailableSemaphores :: V.Vector Semaphore
   , renderFinishedSemaphores :: V.Vector Semaphore
   , submitFinishedFences :: V.Vector Fence
-  , commandBuffers :: V.Vector CommandBuffer
   , frameSize :: Word32
   , sync :: Int
   }
 
-drawFrame :: (MonadIO m) => (Frame, SwapchainResource) -> m (Maybe (Frame, SwapchainResource))
-drawFrame (x@Frame {..}, s@SwapchainResource {..}) = do
+--recreateSwapchain :: 
+
+drawFrame :: (MonadIO m) => (Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Frame, CommandBufferResource, SwapchainResource))
+drawFrame (x@Frame {..}, c@CommandBufferResource {..}, s@SwapchainResource {..}) = do
   let commandBuffer = commandBuffers ! sync
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync
@@ -369,6 +377,7 @@ drawFrame (x@Frame {..}, s@SwapchainResource {..}) = do
     ( x
       { sync = (sync + 1) `mod` fromIntegral frameSize
       }
+    , c
     , s
     )
 
@@ -1164,6 +1173,11 @@ transitionImageLayout commandBuffer image oldLayout newLayout = do
         , dstAccessMask = ACCESS_SHADER_READ_BIT
         } :: ImageMemoryBarrier '[]) ]
     _ -> throw VulkanLayoutTransitionUnsupport
+
+data CommandBufferResource = CommandBufferResource
+  { commandPool :: CommandPool
+  , commandBuffers :: V.Vector CommandBuffer
+  }
 
 withCommandBuffers :: Managed m => Device -> CommandPool -> Word32 -> m (V.Vector CommandBuffer)
 withCommandBuffers device commandPool frameSize =
