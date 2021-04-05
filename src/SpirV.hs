@@ -37,19 +37,19 @@ import Foreign.Storable (Storable (sizeOf, alignment))
 import GHC.Generics (Generic)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
-import Data.Aeson ((.=), (.:), (.:?), FromJSON (..), ToJSON (..), Value (String), decode, decode', encode, eitherDecode, object, pairs, withObject, withText)
+import Data.Aeson ((.=), (.:), (.:?), FromJSON (..), ToJSON (..), Value (String), decode, decode', encode, eitherDecode, eitherDecodeStrict', object, pairs, withObject, withText, genericToEncoding, defaultOptions)
 import Data.Aeson.Types (prependFailure, typeMismatch, unexpected, parseMaybe, Parser, parseFail)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-import System.FilePath ((</>))
+import System.FilePath ((</>), (<.>))
 import System.Process.Typed (proc, readProcess)
 import System.IO.Temp (withSystemTempDirectory)
 import Text.InterpolatedString.QM (qnb)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.List ((\\), group, sort, sortOn, groupBy)
+import Data.List ((\\), group, sort, sortOn, groupBy, mapAccumL, foldl')
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Function (on)
@@ -86,12 +86,12 @@ instance ToJSON Input where
     , "location" .= location
     , "array" .= array
     ]
-  toEncoding (Input type' name location array) = pairs
-    (  "type" .= type'
-    <> "name" .= name
-    <> "location" .= location
-    <> "array" .= array
-    )
+  -- toEncoding (Input type' name location array) = pairs
+  --   (  "type" .= type'
+  --   <> "name" .= name
+  --   <> "location" .= location
+  --   <> "array" .= array
+  --   )
 
 data Ubo = Ubo
   { name :: Text
@@ -124,13 +124,13 @@ instance ToJSON Texture where
     , "binding" .= binding
     , "array" .= array
     ]
-  toEncoding (Texture type' name set binding array) = pairs
-    (  "type" .= type'
-    <> "name" .= name
-    <> "set" .= set
-    <> "binding" .= binding
-    <> "array" .= array
-    )
+  -- toEncoding (Texture type' name set binding array) = pairs
+  --   (  "type" .= type'
+  --   <> "name" .= name
+  --   <> "set" .= set
+  --   <> "binding" .= binding
+  --   <> "array" .= array
+  --   )
 
 data Reflection = Reflection
   { entryPoints :: Vector EntryPoint
@@ -141,6 +141,8 @@ data Reflection = Reflection
 
 test :: MonadIO m => m (Maybe Reflection)
 test = decode . snd <$> reflect (from "vert") testVert
+
+testInput = Input {type' = Vec2, name = "fragTexCoord", location = 1, array = Nothing}
 
 test0 :: Maybe Reflection
 test0 = Just (Reflection {entryPoints = [EntryPoint {name = "main", mode = Frag}], inputs = Just [Input {type' = Vec2, name = "fragTexCoord", location = 1, array = Nothing},Input {type' = Vec4, name = "fragColor", location = 0, array = Nothing}], textures = Just [Texture {type' = Sampler2D, name = "texSampler", set = 0, binding = 1, array = Just [2]},Texture {type' = Sampler2D, name = "texSampler2", set = 3, binding = 1, array = Nothing}], ubos = Nothing})
@@ -407,12 +409,12 @@ makePipelineVertexInputStateCreateInfo inputs = Just zero
     vertexBindingDescriptions = makeVertexInputBindingDescriptions vertexAttributes :: Vector VertexInputBindingDescription
 
 makeVertexInputBindingDescriptions :: Vector VertexAttribute -> Vector VertexInputBindingDescription
-makeVertexInputBindingDescriptions = V.fromList . map makeVertexInputBindingDescription . calculate . groupBy ((==) `on` fst) . sortOn fst . extract
+makeVertexInputBindingDescriptions = V.fromList . map (makeVertexInputBindingDescription . calculate) . groupBy ((==) `on` fst) . sortOn fst . map extract . V.toList
   where
-    extract :: Vector VertexAttribute -> [ ("binding" ::: Int, "size" ::: Int) ]
-    extract = map ((,) . fromIntegral . (binding :: VertexAttribute -> Word32) <*> fromIntegral . size) . V.toList
-    calculate :: [ [ ("binding" ::: Int, "size" ::: Int) ] ] -> [ ("binding" ::: Int, "stride" ::: Int) ]
-    calculate = map (liftA2 (,) (fst . head) (sum . (snd <$>)))
+    extract :: VertexAttribute -> ("binding" ::: Int, "size" ::: Int)
+    extract = liftA2 (,) (fromIntegral . (binding :: VertexAttribute -> Word32)) (fromIntegral . size)
+    calculate :: [ ("binding" ::: Int, "size" ::: Int) ]  -> ("binding" ::: Int, "stride" ::: Int) 
+    calculate = liftA2 (,) (fst . head) (sum . (snd <$>))
 
 makeVertexInputBindingDescription :: ("binding" ::: Int, "stride" ::: Int) -> VertexInputBindingDescription
 makeVertexInputBindingDescription (binding, stride) = zero
@@ -422,14 +424,12 @@ makeVertexInputBindingDescription (binding, stride) = zero
   }
 
 makeVertexAttribute :: Input -> Vector VertexAttribute
-makeVertexAttribute Input {..} = V.map (\i -> VertexAttribute
+makeVertexAttribute Input {..} = V.generate count (\i -> VertexAttribute
   { binding = 0
   , location = fromIntegral . (+ location) $ i
   , size
   , format
   })
-  [ 0 .. count - 1
-  ]
   where
     count = maybe 1 V.sum array :: Int
     (size, format) = convertVertexAttributeType type'
@@ -438,7 +438,7 @@ makeVertexInputAttributeDescriptions :: Vector VertexAttribute -> Vector VertexI
 makeVertexInputAttributeDescriptions = V.fromList . join . map process . groupBy ((==) `on` (binding :: VertexAttribute -> Word32)) . V.toList
   where
     process :: [ VertexAttribute ] -> [ VertexInputAttributeDescription ]
-    process = snd . foldl (\(nextOffset, acc) cur -> liftA2 (,) fst ((acc ++) . pure . snd) (makeVertexInputAttributeDescription nextOffset cur)) (0, [])
+    process = snd . foldl' (\(nextOffset, acc) cur -> liftA2 (,) fst ((acc ++) . pure . snd) (makeVertexInputAttributeDescription nextOffset cur)) (0, [])
 
 makeVertexInputAttributeDescription :: Word32 -> VertexAttribute -> (Word32, VertexInputAttributeDescription)
 makeVertexInputAttributeDescription offset VertexAttribute {..} = (offset + size, zero
@@ -451,19 +451,19 @@ makeVertexInputAttributeDescription offset VertexAttribute {..} = (offset + size
 reflect :: MonadIO m => ShaderStage -> "code" ::: Text -> m (B.ByteString, BL.ByteString)
 reflect shaderStage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   let stage = T.unpack . to $ shaderStage
-  let shader = dir </> "glsl." <> stage
-  let spv = dir </> stage <> ".spv"
+  let shader = dir </> stage <.> "glsl"
+  let spv = dir </> stage <.> "spv"
   T.writeFile shader code
-  (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", stage, "-V", shader, "-o", spv]
+  (exitCode, _spv, err) <- readProcess . proc "glslangValidator" $ [ "-S", stage, "-V", shader, "-o", spv ]
   spirv <- B.readFile spv
-  (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
+  (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ]
   pure (spirv, reflectionRaw)
 
 reflect' :: MonadIO m => "spirv" ::: B.ByteString -> m BL.ByteString
 reflect' spirv = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
-  let spv = dir </> "glsl.spv"
+  let spv = dir </> "shader" <.> "spv"
   B.writeFile spv spirv
-  (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [spv, "--vulkan-semantics", "--reflect"]
+  (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ]
   pure reflectionRaw
 
 reflection :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Shader, Reflection)
@@ -531,3 +531,37 @@ testFrag = [qnb|
     outColor = texture(texSampler[0], fragTexCoord); // for image use texSampler, for shape created by rasterfic use fragColor
   }
   |]
+
+testHlslFrag :: Text
+testHlslFrag = [qnb|
+  float4 main([[vk::location(0)]] const float3 col) : SV_TARGET
+        {
+            return float4(col, 1);
+        }
+  vertCode = [vert|
+        const static float2 positions[3] = {
+          {0.0, -0.5},
+          {0.5, 0.5},
+          {-0.5, 0.5}
+        };
+
+        const static float3 colors[3] = {
+          {1.0, 1.0, 0.0},
+          {0.0, 1.0, 1.0},
+          {1.0, 0.0, 1.0}
+        };
+
+        struct VSOutput
+        {
+          float4 pos : SV_POSITION;
+          [[vk::location(0)]] float3 col;
+        };
+
+        VSOutput main(const uint i : SV_VertexID)
+        {
+          VSOutput output;
+          output.pos = float4(positions[i], 0, 1.0);
+          output.col = colors[i];
+          return output;
+        }
+|]
