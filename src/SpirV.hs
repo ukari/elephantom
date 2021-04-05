@@ -332,7 +332,7 @@ makeTextureDescriptorSetLayoutBinding :: ShaderStage -> Texture -> (Int, Descrip
 makeTextureDescriptorSetLayoutBinding stage Texture {..} = (set, zero
   { binding = fromIntegral binding
   , descriptorType = convertTextureDescriptorType type'
-  , descriptorCount = maybe 1 (V.sum . (fromIntegral <$>)) array
+  , descriptorCount = maybe 1 (fromIntegral . V.sum) array
   , stageFlags = convertStage stage
   })
 
