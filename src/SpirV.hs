@@ -46,6 +46,7 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import System.FilePath ((</>), (<.>))
 import System.Process.Typed (proc, readProcess)
+import GHC.IO.Exception (ExitCode (..))
 import System.IO.Temp (withSystemTempDirectory)
 import Text.InterpolatedString.QM (qnb)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -55,9 +56,11 @@ import qualified Data.Map as M
 import Data.Function (on)
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Word (Word32)
+import Data.Either (fromRight)
 import Control.Applicative (liftA2)
 import Control.Monad (join, ap)
 import Control.Exception (Exception (..), SomeException (..), throw, catch, handle, evaluate)
+import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE, except)
 import Debug.Trace (traceShow)
 
 data EntryPoint = EntryPoint
@@ -141,6 +144,13 @@ data Reflection = Reflection
 
 test :: MonadIO m => m (Maybe Reflection)
 test = decode . snd <$> reflect (from "vert") testVert
+
+eitherTest :: MonadIO m => m (Maybe Reflection)
+eitherTest = do
+  eres <- eitherReflect (from "vert") testVert
+  case eres of
+    Right reflection -> pure . decode . snd $ reflection
+    Left err -> error err
 
 testInput = Input {type' = Vec2, name = "fragTexCoord", location = 1, array = Nothing}
 
@@ -459,12 +469,34 @@ reflect shaderStage code = liftIO . withSystemTempDirectory "th-spirv" $ \dir ->
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ]
   pure (spirv, reflectionRaw)
 
+readProcessHandler :: MonadIO m => (ExitCode, BL.ByteString, BL.ByteString) -> ExceptT String m BL.ByteString
+readProcessHandler (exitCode, result, err) = case exitCode of
+    ExitFailure errCode -> throwE $ "errCode: " <> show errCode <> ", " <> BL.unpack (if BL.null err then result else err)
+    ExitSuccess -> pure result
+
+eitherReflect :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Either String (B.ByteString, BL.ByteString))
+eitherReflect shaderStage code = liftIO . runExceptT .  withSystemTempDirectory "th-spirv" $ \dir -> do
+  let stage = T.unpack . to $ shaderStage
+  let shader = dir </> stage <.> "glsl"
+  let spv = dir </> stage <.> "spv"
+  liftIO . T.writeFile shader $ code
+  _spv <- readProcessHandler =<< (readProcess . proc "glslangValidator" $ [ "-S", stage, "-V", shader, "-o", spv ])
+  spirv <- liftIO . B.readFile $ spv
+  reflectionRaw <- readProcessHandler =<< (readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ])
+  pure (spirv, reflectionRaw)
+
 reflect' :: MonadIO m => "spirv" ::: B.ByteString -> m BL.ByteString
 reflect' spirv = liftIO . withSystemTempDirectory "th-spirv" $ \dir -> do
   let spv = dir </> "shader" <.> "spv"
   B.writeFile spv spirv
   (exitCode, reflectionRaw, err) <- readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ]
   pure reflectionRaw
+
+eitherReflect' :: MonadIO m => "spirv" ::: B.ByteString -> m (Either String BL.ByteString)
+eitherReflect' spirv = liftIO . runExceptT . withSystemTempDirectory "th-spirv" $ \dir -> do
+  let spv = dir </> "shader" <.> "spv"
+  liftIO . B.writeFile spv $ spirv
+  readProcessHandler =<< (readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ])
 
 reflection :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Shader, Reflection)
 reflection stage code = do
@@ -473,12 +505,24 @@ reflection stage code = do
     Just reflection -> pure (Shader {stage, code = spirv}, reflection)
     Nothing -> error "fail to reflect"
 
+eitherReflection  :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Either String (Shader, Reflection))
+eitherReflection stage code = runExceptT $ do
+  (spirv, reflectionRaw) <- except =<< eitherReflect stage code
+  ref <- except . eitherDecodeStrict' @Reflection . BL.toStrict $ reflectionRaw
+  pure (Shader { stage, code = spirv }, ref)
+  
 reflection' :: MonadIO m => "spirv" ::: B.ByteString -> m (Shader, Reflection)
 reflection' spirv = do
   reflectionRaw <- reflect' spirv
   case decode reflectionRaw of
     Just reflection -> pure (Shader {stage = getShaderStage reflection, code = spirv}, reflection)
     Nothing -> error "fail to reflect"
+
+eitherReflection' :: MonadIO m => "spirv" ::: B.ByteString -> m (Either String (Shader, Reflection))
+eitherReflection' spirv = runExceptT $ do
+  reflectionRaw <- except =<< eitherReflect' spirv
+  ref <- except . eitherDecodeStrict' @Reflection . BL.toStrict $ reflectionRaw
+  pure (Shader { stage = getShaderStage ref, code = spirv }, ref) 
 
 getShaderStage :: Reflection -> ShaderStage
 getShaderStage Reflection {..} = mode . V.head $ entryPoints
