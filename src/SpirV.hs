@@ -314,7 +314,7 @@ makeUboDescriptorSetLayoutBinding :: ShaderStage -> Ubo -> (Int, DescriptorSetLa
 makeUboDescriptorSetLayoutBinding stage Ubo {..} = (set, zero
   { binding = fromIntegral binding
   , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-  , descriptorCount = maybe 1 (V.sum . (fromIntegral <$>)) array
+  , descriptorCount = maybe 1 (fromIntegral . V.sum) array
   , stageFlags = convertStage stage
   })
 
@@ -448,7 +448,7 @@ makeVertexInputAttributeDescriptions :: Vector VertexAttribute -> Vector VertexI
 makeVertexInputAttributeDescriptions = V.fromList . join . map process . groupBy ((==) `on` (binding :: VertexAttribute -> Word32)) . V.toList
   where
     process :: [ VertexAttribute ] -> [ VertexInputAttributeDescription ]
-    process = snd . foldl' (\(nextOffset, acc) cur -> liftA2 (,) fst ((acc ++) . pure . snd) (makeVertexInputAttributeDescription nextOffset cur)) (0, [])
+    process = snd . mapAccumL makeVertexInputAttributeDescription 0
 
 makeVertexInputAttributeDescription :: Word32 -> VertexAttribute -> (Word32, VertexInputAttributeDescription)
 makeVertexInputAttributeDescription offset VertexAttribute {..} = (offset + size, zero
