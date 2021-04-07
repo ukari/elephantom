@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
@@ -293,7 +294,7 @@ makeDescriptorInfo :: Vector (Shader, Reflection) -> Vector (DescriptorSetLayout
 makeDescriptorInfo = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd)
 
 makeInputInfo :: Vector (Shader, Reflection) -> Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
-makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.fromList . catMaybes . (inputs . snd <$>) . filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst) . V.toList
+makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.mapMaybe (id <$>) . (inputs . snd <$>) . V.filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst)
 
 makeShaderModuleCreateInfo :: "code" ::: B.ByteString -> ShaderModuleCreateInfo '[]
 makeShaderModuleCreateInfo code = zero { code = code }
@@ -388,7 +389,7 @@ instance FromJSON VertexAttributeType where
 
 instance ToJSON VertexAttributeType where
   toJSON = String . to
-  toEncoding = toEncoding . to
+  toEncoding = traceShow "run here" . toEncoding @Text . to
 
 convertVertexAttributeType :: VertexAttributeType -> (Word32, Format)
 convertVertexAttributeType = \case
@@ -436,7 +437,7 @@ makeVertexInputBindingDescription (binding, stride) = zero
 makeVertexAttribute :: Input -> Vector VertexAttribute
 makeVertexAttribute Input {..} = V.generate count (\i -> VertexAttribute
   { binding = 0
-  , location = fromIntegral . (+ location) $ i
+  , location = fromIntegral $ location + i
   , size
   , format
   })
@@ -474,15 +475,18 @@ readProcessHandler (exitCode, result, err) = case exitCode of
     ExitFailure errCode -> throwE $ "errCode: " <> show errCode <> ", " <> BL.unpack (if BL.null err then result else err)
     ExitSuccess -> pure result
 
+procE :: MonadIO m => FilePath -> [String] -> ExceptT String m BL.ByteString
+procE = fmap ((readProcessHandler =<<) . readProcess) . proc
+
 eitherReflect :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Either String (B.ByteString, BL.ByteString))
 eitherReflect shaderStage code = liftIO . runExceptT .  withSystemTempDirectory "th-spirv" $ \dir -> do
   let stage = T.unpack . to $ shaderStage
   let shader = dir </> stage <.> "glsl"
   let spv = dir </> stage <.> "spv"
   liftIO . T.writeFile shader $ code
-  _spv <- readProcessHandler =<< (readProcess . proc "glslangValidator" $ [ "-S", stage, "-V", shader, "-o", spv ])
+  _spv <- procE "glslangValidator" [ "-S", stage, "-V", shader, "-o", spv ]
   spirv <- liftIO . B.readFile $ spv
-  reflectionRaw <- readProcessHandler =<< (readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ])
+  reflectionRaw <- procE "spirv-cross" [ spv, "--vulkan-semantics", "--reflect" ]
   pure (spirv, reflectionRaw)
 
 reflect' :: MonadIO m => "spirv" ::: B.ByteString -> m BL.ByteString
@@ -496,7 +500,7 @@ eitherReflect' :: MonadIO m => "spirv" ::: B.ByteString -> m (Either String BL.B
 eitherReflect' spirv = liftIO . runExceptT . withSystemTempDirectory "th-spirv" $ \dir -> do
   let spv = dir </> "shader" <.> "spv"
   liftIO . B.writeFile spv $ spirv
-  readProcessHandler =<< (readProcess . proc "spirv-cross" $ [ spv, "--vulkan-semantics", "--reflect" ])
+  procE "spirv-cross" [ spv, "--vulkan-semantics", "--reflect" ]
 
 reflection :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Shader, Reflection)
 reflection stage code = do
