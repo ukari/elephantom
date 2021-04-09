@@ -389,7 +389,7 @@ instance FromJSON VertexAttributeType where
 
 instance ToJSON VertexAttributeType where
   toJSON = String . to
-  toEncoding = traceShow "run here" . toEncoding @Text . to
+  toEncoding = toEncoding @Text . to
 
 convertVertexAttributeType :: VertexAttributeType -> (Word32, Format)
 convertVertexAttributeType = \case
