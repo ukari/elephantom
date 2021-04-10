@@ -52,6 +52,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import Text.InterpolatedString.QM (qnb)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.List ((\\), group, sort, sortOn, groupBy, mapAccumL, foldl')
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Function (on)
@@ -291,7 +292,10 @@ makeShaderInfo (Shader {..}, Reflection {..}) = ShaderInfo {..}
     pipelineShaderStageCreateInfos = (SomeStruct <$>) . makePipelineShaderStageCreateInfos stage entryPoints
 
 makeDescriptorInfo :: Vector (Shader, Reflection) -> Vector (DescriptorSetLayoutCreateInfo '[])
-makeDescriptorInfo = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd)
+makeDescriptorInfo xs = makeDescriptorSetLayoutCreateInfos $ do
+  (Shader{stage}, Reflection{ubos, textures}) <- xs
+  makeDescriptorSetLayoutBindings stage (fromMaybe [] ubos) (fromMaybe [] textures)
+-- makeDescriptorInfo = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd)
 
 makeInputInfo :: Vector (Shader, Reflection) -> Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
 makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.mapMaybe (id <$>) . (inputs . snd <$>) . V.filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst)
