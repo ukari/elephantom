@@ -298,7 +298,7 @@ makeDescriptorInfo xs = makeDescriptorSetLayoutCreateInfos $ do
 -- makeDescriptorInfo = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd)
 
 makeInputInfo :: Vector (Shader, Reflection) -> Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
-makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.mapMaybe (id <$>) . (inputs . snd <$>) . V.filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst)
+makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.mapMaybe (inputs .snd) . V.filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst)
 
 makeShaderModuleCreateInfo :: "code" ::: B.ByteString -> ShaderModuleCreateInfo '[]
 makeShaderModuleCreateInfo code = zero { code = code }
