@@ -52,7 +52,7 @@ import System.IO.Temp (withSystemTempDirectory)
 import Text.InterpolatedString.QM (qnb)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.List ((\\), group, sort, sortOn, groupBy, mapAccumL, foldl')
-import qualified Data.List.NonEmpty as NonEmpty
+import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Function (on)
@@ -298,7 +298,7 @@ makeDescriptorInfo xs = makeDescriptorSetLayoutCreateInfos $ do
 -- makeDescriptorInfo = makeDescriptorSetLayoutCreateInfos . join . V.map (makeDescriptorSetLayoutBindings . (stage :: Shader -> ShaderStage) . fst <*> fromMaybe [] . ubos . snd <*> fromMaybe [] . textures . snd)
 
 makeInputInfo :: Vector (Shader, Reflection) -> Maybe (SomeStruct PipelineVertexInputStateCreateInfo)
-makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.mapMaybe (inputs .snd) . V.filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst)
+makeInputInfo = (SomeStruct <$>) . makePipelineVertexInputStateCreateInfo . join . V.mapMaybe (inputs . snd) . V.filter ((== Vert) . (stage :: Shader -> ShaderStage) . fst)
 
 makeShaderModuleCreateInfo :: "code" ::: B.ByteString -> ShaderModuleCreateInfo '[]
 makeShaderModuleCreateInfo code = zero { code = code }
@@ -366,7 +366,7 @@ makeDescriptorSetLayoutCreateInfos bindings = V.map makeDescriptorSetLayoutCreat
     sets :: Map Int (Vector DescriptorSetLayoutBinding)
     sets = M.fromList . map (, []) $ [ 0 .. setLayoutsSize ]
     setsMap :: Map Int (Vector DescriptorSetLayoutBinding)
-    setsMap = M.fromList . map (liftA2 (,) (fst . head) (V.fromList . (snd <$>))) . groupBy ((==) `on` fst) . sortOn fst . V.toList $ bindings
+    setsMap = M.fromList . map (liftA2 (,) (fst . head) (V.fromList . (snd <$>))) . (NE.toList <$>) . NE.groupAllWith fst . V.toList $ bindings
 
 makeDescriptorSetLayoutCreateInfo :: Vector DescriptorSetLayoutBinding -> DescriptorSetLayoutCreateInfo '[]
 makeDescriptorSetLayoutCreateInfo bindings = zero { bindings = bindings }
@@ -424,7 +424,8 @@ makePipelineVertexInputStateCreateInfo inputs = Just zero
     vertexBindingDescriptions = makeVertexInputBindingDescriptions vertexAttributes :: Vector VertexInputBindingDescription
 
 makeVertexInputBindingDescriptions :: Vector VertexAttribute -> Vector VertexInputBindingDescription
-makeVertexInputBindingDescriptions = V.fromList . map (makeVertexInputBindingDescription . calculate) . groupBy ((==) `on` fst) . sortOn fst . map extract . V.toList
+makeVertexInputBindingDescriptions = V.fromList . map (makeVertexInputBindingDescription . calculate) . (NE.toList <$>) . NE.groupAllWith fst . map extract . V.toList
+-- makeVertexInputBindingDescriptions = V.fromList . map (makeVertexInputBindingDescription . calculate) . groupBy ((==) `on` fst) . sortOn fst . map extract . V.toList
   where
     extract :: VertexAttribute -> ("binding" ::: Int, "size" ::: Int)
     extract = liftA2 (,) (fromIntegral . (binding :: VertexAttribute -> Word32)) (fromIntegral . size)
