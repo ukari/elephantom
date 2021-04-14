@@ -162,18 +162,19 @@ tick' durationD = do
 
 test :: IO ()
 test = runHeadlessApp $ do
-  cur1 <- liftIO getCurrentTime
-  cur2 <- liftIO getCurrentTime
-  liftIO . print $ cur1
-  liftIO . print $ cur2
+  -- cur1 <- liftIO getCurrentTime
+  -- cur2 <- liftIO getCurrentTime
+  -- liftIO . print $ cur1
+  -- liftIO . print $ cur2
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
   e <- eventr
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
   tickDyn <- holdDyn 1 tickConfigEvent
   te <- switchDynamic tickDyn ticker'
+  performEvent_ $ (\info -> liftIO (print info >> (print =<< getCurrentTime) >> print "frame start" >> threadDelay 2100000 >> (print =<< getCurrentTime) >> print "frame end") ) <$> te
   postBuild <- getPostBuild
-  performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
-  performEvent_ $ liftIO . print <$> leftmost [postBuild, () <$ te]
+  -- performEvent_ $ liftIO . tickConfigTrigger <$> traceEvent "hi" (updated dy)
+ -- performEvent_ $ liftIO . print <$> leftmost [postBuild, () <$ te]
   pure never
 
 switchDynamic :: (Signal t m, MonadIO m, Integral a, Adjustable t m) => Dynamic t a -> (a -> m (R.Event t b)) -> m (R.Event t b)
