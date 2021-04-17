@@ -360,13 +360,15 @@ makeDescriptorSetLayoutBindings stage ubos textures = uboBindings <> textureBind
     textureBindings = V.map (makeTextureDescriptorSetLayoutBinding stage) textures
 
 makeDescriptorSetLayoutCreateInfos :: Vector (Int, DescriptorSetLayoutBinding) -> V.Vector (DescriptorSetLayoutCreateInfo '[])
-makeDescriptorSetLayoutCreateInfos bindings = V.map makeDescriptorSetLayoutCreateInfo . V.fromList . M.elems . M.unionWith (V.++) sets $ setsMap
+makeDescriptorSetLayoutCreateInfos bindings = V.map makeDescriptorSetLayoutCreateInfo . V.fromList . M.elems . M.unionWith (V.++) emptySetsMap $ setsMap
   where
-    setLayoutsSize = V.maximum . (fst <$>) $ bindings :: Int
-    sets :: Map Int (Vector DescriptorSetLayoutBinding)
-    sets = M.fromList . map (, []) $ [ 0 .. setLayoutsSize ]
+    setLayoutsSize = V.maximum . fmap fst $ bindings :: Int
+    emptySetsMap :: Map Int (Vector DescriptorSetLayoutBinding)
+    emptySetsMap = M.fromList . map (, []) $ [ 0 .. setLayoutsSize ]
     setsMap :: Map Int (Vector DescriptorSetLayoutBinding)
-    setsMap = M.fromList . map (liftA2 (,) (fst . head) (V.fromList . (snd <$>))) . (NE.toList <$>) . NE.groupAllWith fst . V.toList $ bindings
+    setsMap = M.fromList . map extract . NE.groupAllWith fst . V.toList $ bindings
+    extract :: NE.NonEmpty (Int, DescriptorSetLayoutBinding) -> (Int, Vector DescriptorSetLayoutBinding)
+    extract = liftA2 (,) (fst . NE.head) (V.fromList . NE.toList . fmap snd)
 
 makeDescriptorSetLayoutCreateInfo :: Vector DescriptorSetLayoutBinding -> DescriptorSetLayoutCreateInfo '[]
 makeDescriptorSetLayoutCreateInfo bindings = zero { bindings = bindings }
@@ -424,13 +426,13 @@ makePipelineVertexInputStateCreateInfo inputs = Just zero
     vertexBindingDescriptions = makeVertexInputBindingDescriptions vertexAttributes :: Vector VertexInputBindingDescription
 
 makeVertexInputBindingDescriptions :: Vector VertexAttribute -> Vector VertexInputBindingDescription
-makeVertexInputBindingDescriptions = V.fromList . map (makeVertexInputBindingDescription . calculate) . (NE.toList <$>) . NE.groupAllWith fst . map extract . V.toList
+makeVertexInputBindingDescriptions = V.fromList . map (makeVertexInputBindingDescription . calculate) . NE.groupAllWith fst . map extract . V.toList
 -- makeVertexInputBindingDescriptions = V.fromList . map (makeVertexInputBindingDescription . calculate) . groupBy ((==) `on` fst) . sortOn fst . map extract . V.toList
   where
     extract :: VertexAttribute -> ("binding" ::: Int, "size" ::: Int)
     extract = liftA2 (,) (fromIntegral . (binding :: VertexAttribute -> Word32)) (fromIntegral . size)
-    calculate :: [ ("binding" ::: Int, "size" ::: Int) ]  -> ("binding" ::: Int, "stride" ::: Int) 
-    calculate = liftA2 (,) (fst . head) (sum . (snd <$>))
+    calculate :: NE.NonEmpty ("binding" ::: Int, "size" ::: Int) -> ("binding" ::: Int, "stride" ::: Int)
+    calculate = liftA2 (,) (fst . NE.head) (sum . (snd <$>))
 
 makeVertexInputBindingDescription :: ("binding" ::: Int, "stride" ::: Int) -> VertexInputBindingDescription
 makeVertexInputBindingDescription (binding, stride) = zero
