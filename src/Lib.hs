@@ -42,7 +42,7 @@ import Vulkan.Utils.ShaderQQ.GLSL.Glslang (vert, frag)
 import Vulkan.Utils.Initialization (createDebugInstanceFromRequirements, createDeviceFromRequirements)
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
-import Codec.Picture (PixelRGBA8( .. ), readImage, imageData)
+import Codec.Picture (PixelRGBA8 ( .. ), readImage, imageData)
 import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
 import Graphics.Rasterific.Texture (uniformTexture)
@@ -1013,11 +1013,11 @@ makeDescriptorPoolCreateInfo maxSets infos = zero
   }
   where
     analyse :: V.Vector (DescriptorSetLayoutCreateInfo '[]) -> [(DescriptorType, Int)]
-    analyse = map count . groupBy ((==) `on` fst) . sortOn fst . extract
+    analyse = map calculate . groupBy ((==) `on` fst) . sortOn fst . extract
     extract :: V.Vector (DescriptorSetLayoutCreateInfo '[]) -> [(DescriptorType, Int)]
     extract = map (liftA2 (,) tname (fromIntegral . dcount)) . V.toList . (bindings =<<)
-    count :: [(DescriptorType, Int)] -> (DescriptorType, Int)
-    count = liftA2 (,) (fst . head) (sum . (snd <$>))
+    calculate :: [(DescriptorType, Int)] -> (DescriptorType, Int)
+    calculate = liftA2 (,) (fst . head) (sum . (snd <$>))
     tname = descriptorType :: DescriptorSetLayoutBinding -> DescriptorType
     dcount = descriptorCount :: DescriptorSetLayoutBinding -> Word32
 

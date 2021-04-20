@@ -199,7 +199,7 @@ withTextMaybe :: String -> (Text -> Maybe a) -> Value -> Parser a
 withTextMaybe label converter = withText label $ \text ->
   case converter text of
     Just res -> pure res
-    Nothing -> parseFail $ label <> " unexcept value " <> T.unpack text
+    Nothing -> fail $ label <> " unexcept value " <> T.unpack text
 
 data ShaderStage
   = Vert
