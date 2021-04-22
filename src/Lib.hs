@@ -322,12 +322,7 @@ someFunc = runResourceT $ do
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
   let frameSize = fromIntegral . length $ framebuffers
-  commandBuffers <- Lib.withCommandBuffers device graphicsCommandPool frameSize
-  liftIO $ print $ V.map commandBufferHandle commandBuffers
-  let commandBufferRes = CommandBufferResource
-        { commandPool = graphicsCommandPool
-        , commandBuffers = commandBuffers
-        }
+  commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device graphicsCommandPool frameSize
   mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
 
   SyncResource {..} <- withSyncResource device framebuffers
@@ -348,7 +343,9 @@ data Frame = Frame
   , sync :: Int
   }
 
---recreateSwapchain :: 
+recreateSwapchain :: MonadIO m => m ()
+recreateSwapchain = do
+  liftIO . print $ "test"
 
 drawFrame :: (MonadIO m) => (Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Frame, CommandBufferResource, SwapchainResource))
 drawFrame (x@Frame {..}, c@CommandBufferResource {..}, s@SwapchainResource {..}) = do
@@ -1187,6 +1184,15 @@ withCommandBuffers device commandPool frameSize =
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
     , commandBufferCount = frameSize
     } allocate
+
+withCommandBufferResource :: Managed m => Device -> CommandPool -> Word32 -> m CommandBufferResource
+withCommandBufferResource device commandPool frameSize = do
+  commandBuffers <- Lib.withCommandBuffers device commandPool frameSize
+  liftIO $ print $ V.map commandBufferHandle commandBuffers
+  pure $ CommandBufferResource
+    { commandPool = commandPool
+    , commandBuffers = commandBuffers
+    }
 
 data Present = Present
   { vertexBuffers :: !(V.Vector Buffer)
