@@ -296,6 +296,8 @@ someFunc = runResourceT $ do
   liftIO $ print formats
   liftIO $ print surfaceFormat
   renderPass <- Lib.withRenderPass device surfaceFormat
+  
+  liftIO . print =<< getPhysicalDeviceSurfaceCapabilitiesKHR phys surf
 
   -- resource load
   -- https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/vk__mem__alloc_8h.html#a4f87c9100d154a65a4ad495f7763cf7c
@@ -343,9 +345,12 @@ data Frame = Frame
   , sync :: Int
   }
 
-recreateSwapchain :: MonadIO m => m ()
-recreateSwapchain = do
-  liftIO . print $ "test"
+recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SurfaceKHR -> V.Vector Word32 -> Extent2D -> RenderPass -> SurfaceFormatKHR -> CommandPool -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
+recreateSwapchain phys device surf queueFamilyIndices extent renderPass surfaceFormat graphicsCommandPool CommandBufferResource {..} SwapchainResource {..}= do
+  swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
+  let frameSize = fromIntegral . length $ framebuffers
+  commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device graphicsCommandPool frameSize
+  pure (commandBufferRes, swapchainRes)
 
 drawFrame :: (MonadIO m) => (Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Frame, CommandBufferResource, SwapchainResource))
 drawFrame (x@Frame {..}, c@CommandBufferResource {..}, s@SwapchainResource {..}) = do
