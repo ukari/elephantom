@@ -345,11 +345,11 @@ data Frame = Frame
   , sync :: Int
   }
 
-recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SurfaceKHR -> V.Vector Word32 -> Extent2D -> RenderPass -> SurfaceFormatKHR -> CommandPool -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
-recreateSwapchain phys device surf queueFamilyIndices extent renderPass surfaceFormat graphicsCommandPool CommandBufferResource {..} SwapchainResource {..}= do
+recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SurfaceKHR -> V.Vector Word32 -> Extent2D -> RenderPass -> SurfaceFormatKHR -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
+recreateSwapchain phys device surf queueFamilyIndices extent renderPass surfaceFormat CommandBufferResource {..} SwapchainResource {..}= do
   swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
   let frameSize = fromIntegral . length $ framebuffers
-  commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device graphicsCommandPool frameSize
+  commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device commandPool frameSize
   pure (commandBufferRes, swapchainRes)
 
 drawFrame :: (MonadIO m) => (Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Frame, CommandBufferResource, SwapchainResource))
