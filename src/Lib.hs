@@ -162,10 +162,6 @@ tick' durationD = do
 
 test :: IO ()
 test = runHeadlessApp $ do
-  -- cur1 <- liftIO getCurrentTime
-  -- cur2 <- liftIO getCurrentTime
-  -- liftIO . print $ cur1
-  -- liftIO . print $ cur2
   (tickConfigEvent, tickConfigTrigger) <- newTriggerEvent
   e <- eventr
   dy <- foldDyn (\a b -> ((a + b) `mod` 3) + 1) 0 (1 <$ e)
