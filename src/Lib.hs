@@ -341,6 +341,10 @@ data Frame = Frame
   , sync :: Int
   }
 
+data Context = Context
+  {
+  }
+
 recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SurfaceKHR -> V.Vector Word32 -> Extent2D -> RenderPass -> SurfaceFormatKHR -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
 recreateSwapchain phys device surf queueFamilyIndices extent renderPass surfaceFormat CommandBufferResource {..} SwapchainResource {..}= do
   swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
