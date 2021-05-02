@@ -345,8 +345,10 @@ data Context = Context
   {
   }
 
-recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SurfaceKHR -> V.Vector Word32 -> Extent2D -> RenderPass -> SurfaceFormatKHR -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
-recreateSwapchain phys device surf queueFamilyIndices extent renderPass surfaceFormat CommandBufferResource {..} SwapchainResource {..}= do
+recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SDL.Window -> SurfaceKHR -> V.Vector Word32 -> RenderPass -> SurfaceFormatKHR -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
+recreateSwapchain phys device window surf queueFamilyIndices renderPass surfaceFormat CommandBufferResource {..} SwapchainResource {..}= do
+  V2 width height <- SDL.vkGetDrawableSize window
+  let extent = Extent2D (fromIntegral width) (fromIntegral height)
   swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
   let frameSize = fromIntegral . length $ framebuffers
   commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device commandPool frameSize
