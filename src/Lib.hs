@@ -342,7 +342,12 @@ data Frame = Frame
   }
 
 data Context = Context
-  {
+  { phys :: PhysicalDevice
+  , device :: Device
+  , window :: SDL.Window
+  , surf :: SurfaceKHR
+  , surfaceFormat :: SurfaceFormatKHR
+  , queueFamilyIndices :: V.Vector Word32
   }
 
 recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SDL.Window -> SurfaceKHR -> V.Vector Word32 -> RenderPass -> SurfaceFormatKHR -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
