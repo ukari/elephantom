@@ -325,16 +325,13 @@ someFunc = runResourceT $ do
 
   SyncResource {..} <- withSyncResource device framebuffers
   let frame = Frame {..}
-
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (frame, commandBufferRes, swapchainRes)
+  let ctx = Context {..}
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
   deviceWaitIdleSafe device
   return undefined
 
 data Frame = Frame
-  { device :: Device
-  , graphicsQueue :: Queue
-  , presentQueue :: Queue
-  , imageAvailableSemaphores :: V.Vector Semaphore
+  { imageAvailableSemaphores :: V.Vector Semaphore
   , renderFinishedSemaphores :: V.Vector Semaphore
   , submitFinishedFences :: V.Vector Fence
   , frameSize :: Word32
@@ -344,14 +341,17 @@ data Frame = Frame
 data Context = Context
   { phys :: PhysicalDevice
   , device :: Device
+  , graphicsQueue :: Queue
+  , presentQueue :: Queue
   , window :: SDL.Window
   , surf :: SurfaceKHR
-  , surfaceFormat :: SurfaceFormatKHR
   , queueFamilyIndices :: V.Vector Word32
+  , surfaceFormat :: SurfaceFormatKHR
+  , renderPass :: RenderPass
   }
 
-recreateSwapchain :: Managed m => PhysicalDevice -> Device -> SDL.Window -> SurfaceKHR -> V.Vector Word32 -> RenderPass -> SurfaceFormatKHR -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
-recreateSwapchain phys device window surf queueFamilyIndices renderPass surfaceFormat CommandBufferResource {..} SwapchainResource {..}= do
+recreateSwapchain :: Managed m => Context -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
+recreateSwapchain Context {..} CommandBufferResource {..} SwapchainResource {..}= do
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
@@ -359,8 +359,8 @@ recreateSwapchain phys device window surf queueFamilyIndices renderPass surfaceF
   commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device commandPool frameSize
   pure (commandBufferRes, swapchainRes)
 
-drawFrame :: (MonadIO m) => (Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Frame, CommandBufferResource, SwapchainResource))
-drawFrame (x@Frame {..}, c@CommandBufferResource {..}, s@SwapchainResource {..}) = do
+drawFrame :: (MonadIO m) => (Context, Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
+drawFrame (ctx@Context {..}, x@Frame {..}, c@CommandBufferResource {..}, s@SwapchainResource {..}) = do
   let commandBuffer = commandBuffers ! sync
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync
@@ -384,7 +384,8 @@ drawFrame (x@Frame {..}, c@CommandBufferResource {..}, s@SwapchainResource {..})
   -- queueWaitIdle presentQueue
   -- queueWaitIdle graphicsQueue
   pure . Just $
-    ( x
+    ( ctx
+    , x
       { sync = (sync + 1) `mod` fromIntegral frameSize
       }
     , c
