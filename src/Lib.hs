@@ -351,10 +351,11 @@ data Context = Context
   }
 
 recreateSwapchain :: Managed m => Context -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
-recreateSwapchain Context {..} CommandBufferResource {..} SwapchainResource {..}= do
+recreateSwapchain Context {..} CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain }= do
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
+  swapchainRes@SwapchainResource { framebuffers } <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
+  release . swapchainResourceKey $ oldSwapchainRes
   let frameSize = fromIntegral . length $ framebuffers
   commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device commandPool frameSize
   pure (commandBufferRes, swapchainRes)
@@ -571,7 +572,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
       ]
     transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 
-  textureImageView <- Lib.withImageView device textureFormat textureImage
+  (_imageViewKey, textureImageView) <- Lib.withImageView device textureFormat textureImage
   updateDescriptorSets device
     [ SomeStruct $ zero
       { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 2
@@ -823,6 +824,7 @@ data SwapchainResource = SwapchainResource
   , images :: !(V.Vector Image)
   , imageViews :: !(V.Vector ImageView)
   , framebuffers :: !(V.Vector Framebuffer)
+  , swapchainResourceKey :: ReleaseKey
   }
 
 chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode
@@ -858,32 +860,35 @@ withSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapch
         , clipped = True
         , oldSwapchain = oldSwapchain
         }
-  swapchain <- snd <$> withSwapchainKHR device swapchainCreateInfo Nothing allocate
+  (swapchainKey, swapchain) <- withSwapchainKHR device swapchainCreateInfo Nothing allocate
   images <- snd <$> getSwapchainImagesKHR device swapchain
-  imageViews <- mapM (Lib.withImageView device (format (surfaceFormat :: SurfaceFormatKHR))) images
-  framebuffers <- mapM (Lib.withFramebuffer device extent renderPass) imageViews
+  (imageViewKeys, imageViews) <- fmap V.unzip . mapM (Lib.withImageView device (format (surfaceFormat :: SurfaceFormatKHR))) $ images
+  (framebufferKeys, framebuffers) <- fmap V.unzip . mapM (Lib.withFramebuffer device extent renderPass) $ imageViews
+  swapchainResourceKey <- register $ do
+    release swapchainKey
+    mapM_ release imageViewKeys
+    mapM_ release framebufferKeys
   pure SwapchainResource {..}
 
-withImageView :: Managed m => Device -> Format -> Image -> m ImageView
-withImageView device format img =
-   snd <$> Vulkan.withImageView device zero
-     { image = img
-     , viewType = IMAGE_VIEW_TYPE_2D
-     , format = format
-     , components = zero
-       { r = COMPONENT_SWIZZLE_IDENTITY
-       , g = COMPONENT_SWIZZLE_IDENTITY
-       , b = COMPONENT_SWIZZLE_IDENTITY
-       , a = COMPONENT_SWIZZLE_IDENTITY
-       }
-     , subresourceRange = zero
-       { aspectMask = IMAGE_ASPECT_COLOR_BIT
-       , baseMipLevel = 0
-       , levelCount = 1
-       , baseArrayLayer = 0
-       , layerCount = 1
-       }
-     } Nothing allocate
+withImageView :: Managed m => Device -> Format -> Image -> m (ReleaseKey, ImageView)
+withImageView device format img = Vulkan.withImageView device zero
+  { image = img
+  , viewType = IMAGE_VIEW_TYPE_2D
+  , format = format
+  , components = zero
+    { r = COMPONENT_SWIZZLE_IDENTITY
+    , g = COMPONENT_SWIZZLE_IDENTITY
+    , b = COMPONENT_SWIZZLE_IDENTITY
+    , a = COMPONENT_SWIZZLE_IDENTITY
+    }
+  , subresourceRange = zero
+    { aspectMask = IMAGE_ASPECT_COLOR_BIT
+    , baseMipLevel = 0
+    , levelCount = 1
+    , baseArrayLayer = 0
+    , layerCount = 1
+    }
+  } Nothing allocate
 
 data ShaderResource = ShaderResource
   { shaderStages :: !(V.Vector (SomeStruct PipelineShaderStageCreateInfo))
@@ -1056,15 +1061,14 @@ withRenderPass device surfFormat = do
     , subpasses = [ subpass ]
     } Nothing allocate
 
-withFramebuffer :: Managed m => Device -> Extent2D -> RenderPass -> ImageView -> m Framebuffer
-withFramebuffer device curExtent renderPass imageView =
-  snd <$> Vulkan.withFramebuffer device zero
-    { renderPass = renderPass
-    , attachments = [ imageView ]
-    , width = width (curExtent :: Extent2D)
-    , height = height (curExtent :: Extent2D)
-    , layers = 1
-    } Nothing allocate
+withFramebuffer :: Managed m => Device -> Extent2D -> RenderPass -> ImageView -> m (ReleaseKey, Framebuffer)
+withFramebuffer device curExtent renderPass imageView = Vulkan.withFramebuffer device zero
+  { renderPass = renderPass
+  , attachments = [ imageView ]
+  , width = width (curExtent :: Extent2D)
+  , height = height (curExtent :: Extent2D)
+  , layers = 1
+  } Nothing allocate
 
 data PipelineResource = PipelineResource
   { pipeline :: !Pipeline
