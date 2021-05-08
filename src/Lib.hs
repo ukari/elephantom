@@ -80,6 +80,7 @@ import Data.Function (on)
 import Data.Time (addUTCTime, getCurrentTime)
 import Data.Functor ((<&>))
 import Data.Dependent.Sum (DSum ((:=>)))
+import qualified Data.StateVar as StateVar
 import System.Mem.Weak
 import System.Mem.StableName
 
@@ -326,7 +327,7 @@ someFunc = runResourceT $ do
   SyncResource {..} <- withSyncResource device framebuffers
   let frame = Frame {..}
   let ctx = Context {..}
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) (runResourceT . drawFrame)) . pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
   deviceWaitIdleSafe device
   return undefined
 
@@ -351,17 +352,31 @@ data Context = Context
   }
 
 recreateSwapchain :: Managed m => Context -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
-recreateSwapchain Context {..} CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain }= do
+recreateSwapchain Context {..} CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain } = do
+  deviceWaitIdle device
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  liftIO . print $ "width " <> show extent
+  
   swapchainRes@SwapchainResource { framebuffers } <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
   release . swapchainResourceKey $ oldSwapchainRes
   let frameSize = fromIntegral . length $ framebuffers
   commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device commandPool frameSize
   pure (commandBufferRes, swapchainRes)
 
-drawFrame :: (MonadIO m) => (Context, Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
-drawFrame (ctx@Context {..}, x@Frame {..}, c@CommandBufferResource {..}, s@SwapchainResource {..}) = do
+drawFrameHandler :: (Managed m) => Context -> Frame -> CommandBufferResource -> SwapchainResource -> VulkanException -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
+drawFrameHandler ctx frame cmdr swpr (VulkanException e@ERROR_OUT_OF_DATE_KHR) = do
+  (commandBufferRes, swapchainRes) <- recreateSwapchain ctx cmdr swpr
+  pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
+drawFrameHandler _ _ _ _ e = do
+  liftIO . print $ "throw " <> show e
+  throw e
+
+drawFrame :: (Managed m) => (Context, Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
+drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (runResourceT . (drawFrameHandler ctx frame cmdr swpr)) $ do
+  V2 width height <- SDL.vkGetDrawableSize window
+  let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  liftIO . print $ "width " <> show extent
   let commandBuffer = commandBuffers ! sync
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync
@@ -386,11 +401,11 @@ drawFrame (ctx@Context {..}, x@Frame {..}, c@CommandBufferResource {..}, s@Swapc
   -- queueWaitIdle graphicsQueue
   pure . Just $
     ( ctx
-    , x
+    , frame
       { sync = (sync + 1) `mod` fromIntegral frameSize
       }
-    , c
-    , s
+    , cmdr
+    , swpr
     )
 
 loadTriangle :: Managed m => Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present

@@ -47,6 +47,7 @@ library:
   - aeson
   - recursion-schemes
   - parsec
+  - StateVar
   - sdl2
   - vulkan
   - vulkan-utils

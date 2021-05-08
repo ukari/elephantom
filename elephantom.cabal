@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2ec3e70ec22614a1463d4ef04b1ba4b6b9c3004a82453c8cc1f5d58ce1b10b00
+-- hash: bb3e09d7f95ec5753595d8f092744ed38390f977908a94c72e94b3528e96776c
 
 name:           elephantom
 version:        0.1.0.0
@@ -49,6 +49,7 @@ library
     , JuicyPixels
     , JuicyPixels-repa
     , Rasterific
+    , StateVar
     , VulkanMemoryAllocator
     , aeson
     , base >=4.7 && <5
