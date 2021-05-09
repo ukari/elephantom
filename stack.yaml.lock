@@ -5,6 +5,17 @@
 
 packages:
 - completed:
+    name: sdl2
+    version: 2.5.3.0
+    git: https://github.com/haskell-game/sdl2.git
+    pantry-tree:
+      size: 7014
+      sha256: f7be598159f2e13c31d9311c257d6fb94bcc36abba22310cbe25802ff0e8e430
+    commit: a2646ede53d98aebf8f7c49b01f99236701b7e44
+  original:
+    git: https://github.com/haskell-game/sdl2.git
+    commit: a2646ede53d98aebf8f7c49b01f99236701b7e44
+- completed:
     name: offset
     version: 0.1.1.0
     git: git@github.com:ukari/offset.git

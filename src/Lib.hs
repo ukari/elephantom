@@ -117,6 +117,12 @@ import qualified Control.Exception as Ex
 import Control.Concurrent (forkIO, forkOS, threadDelay)
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 
+import Control.Monad.Logger (runStdoutLoggingT)
+import Control.Concurrent
+import Control.Concurrent.KazuraQueue (newQueue)
+import qualified Control.Concurrent.KazuraQueue as KazuraQueue
+import Event
+import Listen
 import GLSL
 import Shader
 import Offset
@@ -271,7 +277,7 @@ dynamic = undefined
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  
+  eventQueue <- liftIO newQueue
   withSDL
   window <- withWindow "test" 500 500
   inst <- withInst window
@@ -315,6 +321,7 @@ someFunc = runResourceT $ do
   -- resource load end
   
   let fps = 1
+  let inputfps = 120
   let sync = 0
   
   V2 width height <- SDL.vkGetDrawableSize window
@@ -327,6 +334,11 @@ someFunc = runResourceT $ do
   SyncResource {..} <- withSyncResource device framebuffers
   let frame = Frame {..}
   let ctx = Context {..}
+  
+  _ <- liftIO . forkIO . drain . asyncly $
+    (parallel
+      (constRate inputfps $ repeatM $ liftIO $ eventLoop eventQueue)
+      (repeatM $ runStdoutLoggingT $ listenLoop eventQueue))
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) (runResourceT . drawFrame)) . pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
   deviceWaitIdleSafe device
   return undefined
@@ -377,6 +389,8 @@ drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, 
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "width " <> show extent
+  V2 w h <- StateVar.get $ SDL.windowSize window
+  liftIO . print $ "window " <> show w <> " " <> show h 
   let commandBuffer = commandBuffers ! sync
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync

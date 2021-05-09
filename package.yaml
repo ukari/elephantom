@@ -29,6 +29,7 @@ library:
   source-dirs: src
   dependencies:
   - template-haskell
+  - kazura-queue
   - streamly
   - reflex
   - time
@@ -40,6 +41,7 @@ library:
   - vector-algorithms
   - text
   - bytestring
+  - utf8-string
   - qm-interpolated-string
   - filepath
   - typed-process
@@ -62,6 +64,7 @@ library:
   - fused-effects
   - fused-effects-exceptions
   - transformers
+  - monad-logger
   - derive-storable
   - offset
 

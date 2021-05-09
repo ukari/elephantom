@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bb3e09d7f95ec5753595d8f092744ed38390f977908a94c72e94b3528e96776c
+-- hash: 29d6be8644ab7d75e6d63da21fac645fff729bfff9f85a9876ae36eee8ce32e6
 
 name:           elephantom
 version:        0.1.0.0
@@ -27,6 +27,23 @@ source-repository head
 
 library
   exposed-modules:
+      Event
+      Event.Input
+      Event.InputEvent
+      Event.InputMotion
+      Event.InputMotionEvent
+      Event.Keyboard
+      Event.KeyboardEvent
+      Event.Mouse
+      Event.MouseEvent
+      Event.MouseMove
+      Event.MouseWheel
+      Event.MouseWheelEvent
+      Event.TextInput
+      Event.TextInputEvent
+      Event.Time
+      Event.Window
+      Event.WindowEvent
       Foreign.Storable.Offset
       Foreign.Storable.Offset.Internal.OffsetSelect
       Foreign.Storable.Offset.Internal.OffsetSelectable
@@ -35,6 +52,7 @@ library
       Language.GLSL.Compilation
       Language.GLSL.Preprocess
       Lib
+      Listen
       Offset
       Orphan
       Shader
@@ -63,8 +81,10 @@ library
     , fused-effects-exceptions
     , gitrev
     , hspec
+    , kazura-queue
     , linear
     , microlens-platform
+    , monad-logger
     , offset
     , parsec
     , qm-interpolated-string
@@ -81,6 +101,7 @@ library
     , transformers
     , typed-process
     , unliftio-core
+    , utf8-string
     , vector
     , vector-algorithms
     , vulkan

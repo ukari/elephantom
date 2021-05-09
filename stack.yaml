@@ -66,6 +66,8 @@ packages:
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
 extra-deps:
+- git: https://github.com/haskell-game/sdl2.git
+  commit: a2646ede53d98aebf8f7c49b01f99236701b7e44
 - git: git@github.com:ukari/offset.git
   commit: 6fb0f46ba00da3a4a59e175f6613a4ab826272f3
 ## fused-effects-exceptions
