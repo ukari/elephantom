@@ -107,7 +107,7 @@ import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Control.Monad.Trans.Resource (MonadResource, ResourceT, ReleaseKey, runResourceT, allocate, allocate_, release, register, liftResourceT)
+import Control.Monad.Trans.Resource (MonadResource, ResourceT, ReleaseKey, runResourceT, allocate, allocate_, release, register, liftResourceT, resourceForkIO, transResourceT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Monad.Fix (MonadFix)
@@ -118,7 +118,7 @@ import Control.Concurrent (forkIO, forkOS, threadDelay)
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 
 import Control.Monad.Logger (runStdoutLoggingT)
-import Control.Concurrent
+-- import Control.Concurrent
 import Control.Concurrent.KazuraQueue (newQueue)
 import qualified Control.Concurrent.KazuraQueue as KazuraQueue
 import Event
@@ -334,11 +334,11 @@ someFunc = runResourceT $ do
   SyncResource {..} <- withSyncResource device framebuffers
   let frame = Frame {..}
   let ctx = Context {..}
-  
+
   _ <- liftIO . forkIO . drain . asyncly $
-    (parallel
+    parallel
       (constRate inputfps $ repeatM $ liftIO $ eventLoop eventQueue)
-      (repeatM $ runStdoutLoggingT $ listenLoop eventQueue))
+      (repeatM $ runStdoutLoggingT $ listenLoop eventQueue)
   liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) (runResourceT . drawFrame)) . pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
   deviceWaitIdleSafe device
   return undefined
@@ -373,7 +373,7 @@ recreateSwapchain Context {..} CommandBufferResource {..} oldSwapchainRes@Swapch
   swapchainRes@SwapchainResource { framebuffers } <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
   release . swapchainResourceKey $ oldSwapchainRes
   let frameSize = fromIntegral . length $ framebuffers
-  commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device commandPool frameSize
+  commandBufferRes <- withCommandBufferResource device commandPool frameSize
   pure (commandBufferRes, swapchainRes)
 
 drawFrameHandler :: (Managed m) => Context -> Frame -> CommandBufferResource -> SwapchainResource -> VulkanException -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
