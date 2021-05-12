@@ -385,7 +385,7 @@ drawFrameHandler _ _ _ _ e = do
   throw e
 
 drawFrame :: (Managed m) => (Context, Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
-drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (runResourceT . (drawFrameHandler ctx frame cmdr swpr)) $ do
+drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (runResourceT . drawFrameHandler ctx frame cmdr swpr) $ do
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "width " <> show extent
