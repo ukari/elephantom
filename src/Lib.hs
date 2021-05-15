@@ -368,7 +368,7 @@ recreateSwapchain Context {..} CommandBufferResource {..} oldSwapchainRes@Swapch
   deviceWaitIdle device
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  liftIO . print $ "width " <> show extent
+  liftIO . print $ "recreate width " <> show extent
   
   swapchainRes@SwapchainResource { framebuffers } <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
   release . swapchainResourceKey $ oldSwapchainRes
@@ -893,10 +893,14 @@ withSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapch
   images <- snd <$> getSwapchainImagesKHR device swapchain
   (imageViewKeys, imageViews) <- fmap V.unzip . mapM (Lib.withImageView device (format (surfaceFormat :: SurfaceFormatKHR))) $ images
   (framebufferKeys, framebuffers) <- fmap V.unzip . mapM (Lib.withFramebuffer device extent renderPass) $ imageViews
+  releaseSwapchain <- unprotect swapchainKey
+  releaseImageViewKeys <- mapM_ unprotect imageViewKeys
+  releaseFramebufferKeys <- mapM_ unprotect framebufferKeys 
   swapchainResourceKey <- register $ do
-    release swapchainKey
-    mapM_ release imageViewKeys
-    mapM_ release framebufferKeys
+    -- release swapchainKey
+    -- mapM_ release imageViewKeys
+    -- mapM_ release framebufferKeys
+    pure ()
   pure SwapchainResource {..}
 
 withImageView :: Managed m => Device -> Format -> Image -> m (ReleaseKey, ImageView)
