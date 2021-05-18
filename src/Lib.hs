@@ -272,9 +272,6 @@ ortho2D left right bottom top = ortho' left right bottom top (fromIntegral (-max
 rotateAt :: (Num a, Epsilon a, Floating a) => V3 a -> Quaternion a -> M44 a
 rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y)) (0+(z))) !*! mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 (-x) (-y) (-z))
 
-dynamic :: (Varing t m, MonadIO m, MonadResource m)=>(() -> m a) -> IO () -> m (Dynamic t a)
-dynamic = undefined
-
 someFunc :: IO ()
 someFunc = runResourceT $ do
   eventQueue <- liftIO newQueue
