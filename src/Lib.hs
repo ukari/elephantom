@@ -360,22 +360,26 @@ data Context = Context
   , renderPass :: RenderPass
   }
 
-recreateSwapchain :: Managed m => Context -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
-recreateSwapchain Context {..} CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain } = do
+recreateSwapchain :: Managed m => Context -> Frame -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
+recreateSwapchain Context {..} oldFrame@Frame {..} oldCmdRes@CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain } = do
   deviceWaitIdle device
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "recreate width " <> show extent
-  
+  let fence = submitFinishedFences ! sync
+  --Vulkan.resetFences device [ fence ]
+  queueSubmit graphicsQueue [] fence
+  liftIO . print $ "reset fence " <> show fence
   swapchainRes@SwapchainResource { framebuffers } <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
   release . swapchainResourceKey $ oldSwapchainRes
   let frameSize = fromIntegral . length $ framebuffers
   commandBufferRes <- withCommandBufferResource device commandPool frameSize
-  pure (commandBufferRes, swapchainRes)
+  deviceWaitIdle device
+  pure (oldCmdRes, swapchainRes)
 
 drawFrameHandler :: (Managed m) => Context -> Frame -> CommandBufferResource -> SwapchainResource -> VulkanException -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
 drawFrameHandler ctx frame cmdr swpr (VulkanException e@ERROR_OUT_OF_DATE_KHR) = do
-  (commandBufferRes, swapchainRes) <- recreateSwapchain ctx cmdr swpr
+  (commandBufferRes, swapchainRes) <- recreateSwapchain ctx frame cmdr swpr
   pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
 drawFrameHandler _ _ _ _ e = do
   liftIO . print $ "throw " <> show e
@@ -387,14 +391,19 @@ drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, 
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "width " <> show extent
   V2 w h <- StateVar.get $ SDL.windowSize window
-  liftIO . print $ "window " <> show w <> " " <> show h 
+  liftIO . print $ "window " <> show w <> " " <> show h
+  liftIO . print $ "finish report"
   let commandBuffer = commandBuffers ! sync
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync
   let fence = submitFinishedFences ! sync
+  liftIO . print $ "wait for fence " <> show fence
   _ <- waitForFencesSafe device [ fence ] True maxBound
+  liftIO . print $ "before reset"
   resetFences device [ fence ]
+  liftIO . print $ "before acquire"
   imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
+  liftIO . print $ "submit"
   queueSubmit graphicsQueue
     [ SomeStruct $ zero
       { Core10.waitSemaphores = [ imageAvailableSemaphore ]
@@ -408,6 +417,7 @@ drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, 
     , swapchains = [ swapchain ]
     , imageIndices = [ imageIndex ]
     }
+  liftIO . print $ "end frame"
   -- queueWaitIdle presentQueue
   -- queueWaitIdle graphicsQueue
   pure . Just $
@@ -892,7 +902,7 @@ withSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapch
   (framebufferKeys, framebuffers) <- fmap V.unzip . mapM (Lib.withFramebuffer device extent renderPass) $ imageViews
   releaseSwapchain <- unprotect swapchainKey
   releaseImageViewKeys <- mapM_ unprotect imageViewKeys
-  releaseFramebufferKeys <- mapM_ unprotect framebufferKeys 
+  releaseFramebufferKeys <- mapM_ unprotect framebufferKeys
   swapchainResourceKey <- register $ do
     -- release swapchainKey
     -- mapM_ release imageViewKeys
