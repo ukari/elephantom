@@ -362,7 +362,7 @@ data Context = Context
 
 recreateSwapchain :: Managed m => Context -> Frame -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
 recreateSwapchain Context {..} oldFrame@Frame {..} oldCmdRes@CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain } = do
-  deviceWaitIdle device
+  deviceWaitIdleSafe device
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "recreate width " <> show extent
@@ -374,7 +374,7 @@ recreateSwapchain Context {..} oldFrame@Frame {..} oldCmdRes@CommandBufferResour
   release . swapchainResourceKey $ oldSwapchainRes
   let frameSize = fromIntegral . length $ framebuffers
   commandBufferRes <- withCommandBufferResource device commandPool frameSize
-  deviceWaitIdle device
+  deviceWaitIdleSafe device
   pure (oldCmdRes, swapchainRes)
 
 drawFrameHandler :: (Managed m) => Context -> Frame -> CommandBufferResource -> SwapchainResource -> VulkanException -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
@@ -412,6 +412,7 @@ drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, 
       , signalSemaphores = [ renderFinishedSemaphore ]
       }
     ] fence
+  liftIO . print $ "present"
   _ <- queuePresentKHR presentQueue zero
     { Swap.waitSemaphores = [ renderFinishedSemaphore ]
     , swapchains = [ swapchain ]
