@@ -114,7 +114,7 @@ import Control.Monad.Fix (MonadFix)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), SomeException (..), throw, handleJust, try, catch)
 import qualified Control.Exception as Ex
-import Control.Concurrent (forkIO, forkOS, threadDelay)
+import Control.Concurrent (MVar (..), newMVar, readMVar, forkIO, forkOS, threadDelay)
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 
 import Control.Monad.Logger (runStdoutLoggingT)
@@ -326,8 +326,8 @@ someFunc = runResourceT $ do
   swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
   let frameSize = fromIntegral . length $ framebuffers
   commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device graphicsCommandPool frameSize
-  mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
-
+  -- mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
+  presentsMVar <- liftIO . newMVar $ [ trianglePresent, texturePresent ]
   SyncResource {..} <- withSyncResource device framebuffers
   let frame = Frame {..}
   let ctx = Context {..}
@@ -358,6 +358,7 @@ data Context = Context
   , queueFamilyIndices :: V.Vector Word32
   , surfaceFormat :: SurfaceFormatKHR
   , renderPass :: RenderPass
+  , presentsMVar :: MVar (V.Vector Present)
   }
 
 recreateSwapchain :: Managed m => Context -> Frame -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
@@ -375,7 +376,7 @@ recreateSwapchain Context {..} oldFrame@Frame {..} oldCmdRes@CommandBufferResour
   let frameSize = fromIntegral . length $ framebuffers
   commandBufferRes <- withCommandBufferResource device commandPool frameSize
   deviceWaitIdleSafe device
-  pure (oldCmdRes, swapchainRes)
+  pure (commandBufferRes, swapchainRes)
 
 drawFrameHandler :: (Managed m) => Context -> Frame -> CommandBufferResource -> SwapchainResource -> VulkanException -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
 drawFrameHandler ctx frame cmdr swpr (VulkanException e@ERROR_OUT_OF_DATE_KHR) = do
@@ -387,13 +388,19 @@ drawFrameHandler _ _ _ _ e = do
 
 drawFrame :: (Managed m) => (Context, Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
 drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (runResourceT . drawFrameHandler ctx frame cmdr swpr) $ do
+  
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "width " <> show extent
   V2 w h <- StateVar.get $ SDL.windowSize window
   liftIO . print $ "window " <> show w <> " " <> show h
   liftIO . print $ "finish report"
+  
   let commandBuffer = commandBuffers ! sync
+  presents <- readMVar presentsMVar
+  deviceWaitIdleSafe device
+  -- resetCommandBuffer commandBuffer COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+  submitCommand extent renderPass presents (commandBuffer, framebuffers! sync)
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync
   let fence = submitFinishedFences ! sync
@@ -829,7 +836,7 @@ withCommandPoolResource :: Managed m => Device -> QueueFamilyIndices -> m Comman
 withCommandPoolResource device QueueFamilyIndices {..} = do
   graphicsCommandPool <- snd <$> withCommandPool device zero
     { queueFamilyIndex = graphicsFamily
-    , flags = zeroBits
+    , flags = COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT --zeroBits
     } Nothing allocate
   transferCommandPool <- snd <$> withCommandPool device zero
     { queueFamilyIndex = transferFamily
@@ -1260,7 +1267,7 @@ data Present = Present
   , pipelineResource :: !PipelineResource
   }
 
-submitCommand :: Managed m
+submitCommand :: MonadIO m
               => "renderArea" ::: Extent2D
               -> RenderPass
               -> V.Vector Present
@@ -1284,7 +1291,7 @@ submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuff
           }
         ] :: V.Vector Rect2D
   liftIO $ useCommandBuffer commandBuffer zero -- do
-    { flags = COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT --COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT -- COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
     } $ cmdUseRenderPass commandBuffer zero
       { renderPass = renderPass
       , framebuffer = framebuffer
@@ -1298,7 +1305,7 @@ submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuff
     presentCmd :: V.Vector Viewport -> V.Vector Rect2D -> Present -> IO ()
     presentCmd viewports scissors Present {..} = do
       cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS ((pipeline :: PipelineResource -> Pipeline) pipelineResource)
-      let offsets = const 0 <$> vertexBuffers
+      let offsets = 0 <$ vertexBuffers
       cmdSetViewport commandBuffer 0 viewports
       cmdSetScissor commandBuffer 0 scissors
       cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets

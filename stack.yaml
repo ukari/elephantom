@@ -70,6 +70,10 @@ extra-deps:
   commit: a2646ede53d98aebf8f7c49b01f99236701b7e44
 - git: git@github.com:ukari/offset.git
   commit: 6fb0f46ba00da3a4a59e175f6613a4ab826272f3
+## resource manage
+- lifetimes-0.1.0.0@sha256:87fff73310a17cd5ecf3fe37d917e6579664b8b858b044c18e9ae8211d237907,1937
+- monad-stm-0.1.0.2@sha256:68c509a631cbb2f49c3e8b37527d281e6fdafbedac63a4c6fa69c98f4e0b2506,1732
+- zenhack-prelude-0.1.1.0@sha256:1ffdc0ad17e7c25786ef671f5889c165b325265b6d85ef4518a38fb1c52c446a,960
 ## fused-effects-exceptions
 - fused-effects-exceptions-1.1.0.0@sha256:c1880f55360deaa4441bda9ff09a4ce6dbd63df8c175c7ada16a5d67a3717bee,1749
 - fused-effects-1.1.1.0@sha256:6f5cf3f2d0d61f39d97b8f63bc96564d0f64bc2801f3da828572d9f99f1e79f4,5139

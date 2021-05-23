@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 29d6be8644ab7d75e6d63da21fac645fff729bfff9f85a9876ae36eee8ce32e6
+-- hash: e2f57ae0eaddb8d3ef2b3c95965ed0fbfbc58cf0582e052d63cfce57ce071526
 
 name:           elephantom
 version:        0.1.0.0
@@ -82,6 +82,7 @@ library
     , gitrev
     , hspec
     , kazura-queue
+    , lifetimes
     , linear
     , microlens-platform
     , monad-logger

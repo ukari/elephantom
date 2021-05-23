@@ -55,6 +55,7 @@ library:
   - vulkan-utils
   - VulkanMemoryAllocator
   - resourcet
+  - lifetimes
   - unliftio-core
   - repa
   - JuicyPixels-repa
