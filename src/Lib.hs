@@ -93,6 +93,7 @@ import Reflex.Host.Headless (MonadHeadlessApp, runHeadlessApp)
 import Reflex.Host.Class (MonadReflexHost, runHostFrame, fireEventsAndRead, fireEvents)
 import Reflex.Workflow (Workflow (..))
 import Reflex.Network (networkHold)
+import Lifetimes (Acquire (..), mkAcquire, withAcquire, releaseEarly, detach)
 import Control.Algebra
 import Control.Carrier.Lift
 import Control.Carrier.Reader
@@ -116,6 +117,7 @@ import Control.Exception (Exception (..), SomeException (..), throw, handleJust,
 import qualified Control.Exception as Ex
 import Control.Concurrent (MVar (..), newMVar, readMVar, forkIO, forkOS, threadDelay)
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
+import Data.Functor.Identity (runIdentity)
 
 import Control.Monad.Logger (runStdoutLoggingT)
 -- import Control.Concurrent
@@ -279,6 +281,7 @@ someFunc = runResourceT $ do
   window <- withWindow "test" 500 500
   inst <- withInst window
   surf <- withSurface inst window
+  -- surf <- withSurface' inst window
   phys <- getPhysicalDevice inst
   liftIO . print . maxBoundDescriptorSets . limits =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
@@ -714,6 +717,9 @@ withSurface inst window = do
   (_key, surf) <- allocate (SurfaceKHR <$> SDL.vkCreateSurface window (castPtr . instanceHandle $ inst))
     (flip (destroySurfaceKHR inst) Nothing)
   pure surf
+
+withSurface' :: Instance -> SDL.Window -> Acquire SurfaceKHR
+withSurface' inst window = mkAcquire (SurfaceKHR <$> SDL.vkCreateSurface window (castPtr . instanceHandle $ inst)) (flip (destroySurfaceKHR inst) Nothing)
 
 getPhysicalDevice :: MonadIO m => Instance -> m PhysicalDevice
 getPhysicalDevice inst = do
