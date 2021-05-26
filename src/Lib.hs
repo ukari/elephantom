@@ -1250,11 +1250,11 @@ data CommandBufferResource = CommandBufferResource
 
 withCommandBuffers :: Managed m => Device -> CommandPool -> Word32 -> m (V.Vector CommandBuffer)
 withCommandBuffers device commandPool frameSize =
-  snd <$> Vulkan.withCommandBuffers device zero
+  Vulkan.withCommandBuffers device zero
     { commandPool = commandPool
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
     , commandBufferCount = frameSize
-    } allocate
+    } pure
 
 withCommandBufferResource :: Managed m => Device -> CommandPool -> Word32 -> m CommandBufferResource
 withCommandBufferResource device commandPool frameSize = do
