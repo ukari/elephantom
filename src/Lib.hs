@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- record field
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -1254,7 +1255,7 @@ withCommandBuffers device commandPool frameSize =
     { commandPool = commandPool
     , level = COMMAND_BUFFER_LEVEL_PRIMARY
     , commandBufferCount = frameSize
-    } pure
+    } pure -- TODO
 
 withCommandBufferResource :: Managed m => Device -> CommandPool -> Word32 -> m CommandBufferResource
 withCommandBufferResource device commandPool frameSize = do
