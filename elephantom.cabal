@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e2f57ae0eaddb8d3ef2b3c95965ed0fbfbc58cf0582e052d63cfce57ce071526
+-- hash: 50ee3e7848b89a709b6831cc31c1f68b5cd136ae8c62dba87ec6f0a2cc1cf9a7
 
 name:           elephantom
 version:        0.1.0.0
@@ -27,6 +27,34 @@ source-repository head
 
 library
   exposed-modules:
+      Elephantom.Application
+      Elephantom.Renderer
+      Elephantom.Renderer.ApplicationInfo
+      Elephantom.Renderer.Command
+      Elephantom.Renderer.CommandBuffer
+      Elephantom.Renderer.CommandPool
+      Elephantom.Renderer.Descriptor
+      Elephantom.Renderer.Device
+      Elephantom.Renderer.Frame
+      Elephantom.Renderer.Framebuffer
+      Elephantom.Renderer.ImageLayout
+      Elephantom.Renderer.ImageView
+      Elephantom.Renderer.Inst
+      Elephantom.Renderer.PhysicalDevice
+      Elephantom.Renderer.Pipeline
+      Elephantom.Renderer.Present
+      Elephantom.Renderer.Queue
+      Elephantom.Renderer.QueueFamily
+      Elephantom.Renderer.RendererException
+      Elephantom.Renderer.RenderPass
+      Elephantom.Renderer.Sampler
+      Elephantom.Renderer.SDL
+      Elephantom.Renderer.Shader
+      Elephantom.Renderer.Surface
+      Elephantom.Renderer.Swapchain
+      Elephantom.Renderer.Util
+      Elephantom.Renderer.Vma
+      Elephantom.Renderer.Window
       Event
       Event.Input
       Event.InputEvent

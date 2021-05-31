@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 -- record field
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -43,7 +42,7 @@ import Vulkan.Utils.ShaderQQ.GLSL.Glslang (vert, frag)
 import Vulkan.Utils.Initialization (createDebugInstanceFromRequirements, createDeviceFromRequirements)
 import Vulkan.Requirement
 import qualified VulkanMemoryAllocator as Vma
-import Codec.Picture (PixelRGBA8 ( .. ), readImage, imageData)
+import Codec.Picture (PixelRGBA8 (..), readImage, imageData)
 import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
 import Graphics.Rasterific.Texture (uniformTexture)
@@ -57,12 +56,12 @@ import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
-import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), Epsilon, transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, m33_to_m44, scaled)
 
+import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), Epsilon, transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, m33_to_m44, scaled)
 import qualified Linear
 import Data.String (IsString)
 import Data.Word (Word32)
-import Data.Text (Text (..))
+import Data.Text (Text)
 import Data.ByteString (packCString, pack)
 import Data.ByteString.Char8 (ByteString)
 import Data.Traversable (traverse)
@@ -116,7 +115,7 @@ import Control.Monad.Fix (MonadFix)
 import Control.Error.Util (hoistMaybe, failWith)
 import Control.Exception (Exception (..), SomeException (..), throw, handleJust, try, catch)
 import qualified Control.Exception as Ex
-import Control.Concurrent (MVar (..), newMVar, readMVar, forkIO, forkOS, threadDelay)
+import Control.Concurrent (MVar, newMVar, readMVar, forkIO, forkOS, threadDelay)
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 import Data.Functor.Identity (runIdentity)
 
@@ -130,6 +129,9 @@ import GLSL
 import Shader
 import Offset
 import qualified SpirV
+import Elephantom.Renderer
+import qualified Elephantom.Renderer as Lib
+import Elephantom.Application (defaultApplication)
 
 testRelease :: IO ()
 testRelease = runResourceT $ do
@@ -190,27 +192,7 @@ switchDynamic d f = do
   e <- snd <$> runWithReplace (pure ()) (f <$> updated d)
   switchHold initialE e
 
-appInfo :: ApplicationInfo
-appInfo = zero { applicationName = Nothing
-               , apiVersion = API_VERSION_1_0
-               }
 
-promote :: [ByteString] -> [ByteString]
-promote = filter $ p . promoteTo
-  where
-    p :: Maybe Word32 -> Bool
-    p (Just promoteVersion) = apiVersion (appInfo :: ApplicationInfo) < promoteVersion
-    p Nothing = True
-
-promoteTo :: ByteString -> Maybe Word32
-promoteTo = \case
-  KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -> Just API_VERSION_1_1
-  KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -> Just API_VERSION_1_1
-  KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -> Just API_VERSION_1_1
-  EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME -> Just API_VERSION_1_2
-  KHR_MAINTENANCE3_EXTENSION_NAME -> Just API_VERSION_1_1
-  KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME -> Just API_VERSION_1_2
-  _ -> Nothing
 
 data EvenException = EvenException deriving (Show)
 
@@ -277,12 +259,12 @@ rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
+  let application = defaultApplication
   eventQueue <- liftIO newQueue
   withSDL
   window <- withWindow "test" 500 500
-  inst <- withInst window
+  inst <- withInst application window
   surf <- withSurface inst window
-  -- surf <- withSurface' inst window
   phys <- getPhysicalDevice inst
   liftIO . print . maxBoundDescriptorSets . limits =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
@@ -299,8 +281,8 @@ someFunc = runResourceT $ do
   let surfaceFormat = chooseFormat formats
   liftIO $ print formats
   liftIO $ print surfaceFormat
-  renderPass <- Lib.withRenderPass device surfaceFormat
-  
+  renderPass <- Lib.createRenderPass device surfaceFormat
+
   liftIO . print =<< getPhysicalDeviceSurfaceCapabilitiesKHR phys surf
 
   -- resource load
@@ -313,135 +295,39 @@ someFunc = runResourceT $ do
     , Vma.vulkanApiVersion = apiVersion (appInfo :: ApplicationInfo)
     } allocate
 
-  shaderRes <- withShaderStages device
-  pipelineRes <- Lib.withPipeline device renderPass shaderRes
+  (shaderRes, shaderModules) <- withShaderStages device
+  pipelineRes <- snd <$> allocate (createPipelineResource device renderPass shaderRes) (destroyPipelineResource device)
+  mapM_ (Lib.destroyShaderModule device) shaderModules
   trianglePresent <- loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes
-  textureShaderRes <- Lib.withTextureShaderStages device
-  texturePipelineRes <- Lib.withPipeline device renderPass textureShaderRes
+  (textureShaderRes, textureShaderModules) <- Lib.withTextureShaderStages device
+  texturePipelineRes <- snd <$> allocate (Lib.createPipelineResource device renderPass textureShaderRes) (destroyPipelineResource device)
+  mapM_ (Lib.destroyShaderModule device) textureShaderModules
   texturePresent <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   -- resource load end
-  
+
   let fps = 1
   let inputfps = 120
-  let sync = 0
+
   
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  swapchainRes@SwapchainResource {..} <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
+  swapchainRes@SwapchainResource {..} <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
   let frameSize = fromIntegral . length $ framebuffers
-  commandBufferRes@CommandBufferResource {..} <- withCommandBufferResource device graphicsCommandPool frameSize
+  commandBufferRes@CommandBufferResource {..} <- createCommandBufferResource device graphicsCommandPool frameSize
   -- mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
   presentsMVar <- liftIO . newMVar $ [ trianglePresent, texturePresent ]
-  SyncResource {..} <- withSyncResource device framebuffers
-  let frame = Frame {..}
+  frameSync@FrameSync {..} <- createFrameSync device framebuffers
   let ctx = Context {..}
 
   _ <- liftIO . forkIO . drain . asyncly $
     parallel
       (constRate inputfps $ repeatM $ liftIO $ eventLoop eventQueue)
       (repeatM $ runStdoutLoggingT $ listenLoop eventQueue)
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) (runResourceT . drawFrame)) . pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) (drawFrame)) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
   deviceWaitIdleSafe device
   return undefined
 
-data Frame = Frame
-  { imageAvailableSemaphores :: V.Vector Semaphore
-  , renderFinishedSemaphores :: V.Vector Semaphore
-  , submitFinishedFences :: V.Vector Fence
-  , frameSize :: Word32
-  , sync :: Int
-  }
-
-data Context = Context
-  { phys :: PhysicalDevice
-  , device :: Device
-  , graphicsQueue :: Queue
-  , presentQueue :: Queue
-  , window :: SDL.Window
-  , surf :: SurfaceKHR
-  , queueFamilyIndices :: V.Vector Word32
-  , surfaceFormat :: SurfaceFormatKHR
-  , renderPass :: RenderPass
-  , presentsMVar :: MVar (V.Vector Present)
-  }
-
-recreateSwapchain :: Managed m => Context -> Frame -> CommandBufferResource -> SwapchainResource -> m (CommandBufferResource, SwapchainResource)
-recreateSwapchain Context {..} oldFrame@Frame {..} oldCmdRes@CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain } = do
-  deviceWaitIdleSafe device
-  V2 width height <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  liftIO . print $ "recreate width " <> show extent
-  let fence = submitFinishedFences ! sync
-  --Vulkan.resetFences device [ fence ]
-  queueSubmit graphicsQueue [] fence
-  liftIO . print $ "reset fence " <> show fence
-  swapchainRes@SwapchainResource { framebuffers } <- withSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
-  release . swapchainResourceKey $ oldSwapchainRes
-  let frameSize = fromIntegral . length $ framebuffers
-  commandBufferRes <- withCommandBufferResource device commandPool frameSize
-  deviceWaitIdleSafe device
-  pure (commandBufferRes, swapchainRes)
-
-drawFrameHandler :: (Managed m) => Context -> Frame -> CommandBufferResource -> SwapchainResource -> VulkanException -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
-drawFrameHandler ctx frame cmdr swpr (VulkanException e@ERROR_OUT_OF_DATE_KHR) = do
-  (commandBufferRes, swapchainRes) <- recreateSwapchain ctx frame cmdr swpr
-  pure . Just $ (ctx, frame, commandBufferRes, swapchainRes)
-drawFrameHandler _ _ _ _ e = do
-  liftIO . print $ "throw " <> show e
-  throw e
-
-drawFrame :: (Managed m) => (Context, Frame, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, Frame, CommandBufferResource, SwapchainResource))
-drawFrame (ctx@Context {..}, frame@Frame {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (runResourceT . drawFrameHandler ctx frame cmdr swpr) $ do
-  
-  V2 width height <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  liftIO . print $ "width " <> show extent
-  V2 w h <- StateVar.get $ SDL.windowSize window
-  liftIO . print $ "window " <> show w <> " " <> show h
-  liftIO . print $ "finish report"
-  
-  let commandBuffer = commandBuffers ! sync
-  presents <- readMVar presentsMVar
-  deviceWaitIdleSafe device
-  -- resetCommandBuffer commandBuffer COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-  submitCommand extent renderPass presents (commandBuffer, framebuffers! sync)
-  let imageAvailableSemaphore = imageAvailableSemaphores ! sync
-  let renderFinishedSemaphore = renderFinishedSemaphores ! sync
-  let fence = submitFinishedFences ! sync
-  liftIO . print $ "wait for fence " <> show fence
-  _ <- waitForFencesSafe device [ fence ] True maxBound
-  liftIO . print $ "before reset"
-  resetFences device [ fence ]
-  liftIO . print $ "before acquire"
-  imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
-  liftIO . print $ "submit"
-  queueSubmit graphicsQueue
-    [ SomeStruct $ zero
-      { Core10.waitSemaphores = [ imageAvailableSemaphore ]
-      , waitDstStageMask = [ PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ]
-      , commandBuffers = [ commandBufferHandle commandBuffer ]
-      , signalSemaphores = [ renderFinishedSemaphore ]
-      }
-    ] fence
-  liftIO . print $ "present"
-  _ <- queuePresentKHR presentQueue zero
-    { Swap.waitSemaphores = [ renderFinishedSemaphore ]
-    , swapchains = [ swapchain ]
-    , imageIndices = [ imageIndex ]
-    }
-  liftIO . print $ "end frame"
-  -- queueWaitIdle presentQueue
-  -- queueWaitIdle graphicsQueue
-  pure . Just $
-    ( ctx
-    , frame
-      { sync = (sync + 1) `mod` fromIntegral frameSize
-      }
-    , cmdr
-    , swpr
-    )
-
-loadTriangle :: Managed m => Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
+loadTriangle :: MonadResource m => Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
 loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
   
   (vertexBuffer, vertexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
@@ -457,7 +343,7 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
         , ShaderInputVertex (V2 375 (375)) (V4 (53/255) (102/255) (53/255) 1)
         , ShaderInputVertex (V2 (125) (375)) (V4 (53/255) (53/255) (102/255) 1)
         ] :: VS.Vector ShaderInputVertex
-  liftIO . runResourceT $ memCopy allocator vertexBufferAllocation vertices -- early free
+  memCopy allocator vertexBufferAllocation vertices -- early free
 
   let indices = [0, 1, 2] :: VS.Vector Word32
   (indexBuffer, indexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
@@ -467,7 +353,7 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
     } zero {
       Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
     } allocate
-  liftIO . runResourceT $ memCopy allocator indexBufferAllocation indices
+  memCopy allocator indexBufferAllocation indices
 
   (uniformBuffer, uniformBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
     { size = fromIntegral $ 1 * sizeOf (undefined :: ShaderUniform)
@@ -482,9 +368,9 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
         , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
-  liftIO . runResourceT $ memCopyU allocator uniformBufferAllocation uniform -- early free
+  memCopyU allocator uniformBufferAllocation uniform -- early free
   liftIO . print $ descriptorSetLayoutCreateInfos shaderRes
-  descriptorSetResource <- withDescriptorSetResource device (descriptorSetLayouts shaderRes) (descriptorSetLayoutCreateInfos shaderRes)
+  descriptorSetResource <- createDescriptorSetResource device (descriptorSetLayouts shaderRes) (descriptorSetLayoutCreateInfos shaderRes)
   liftIO . print $ descriptorSetResource
   let bufferInfos :: V.Vector DescriptorBufferInfo
       bufferInfos =
@@ -508,11 +394,11 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
     ] []
   pure $ Present [vertexBuffer] indexBuffer (descriptorSets (descriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ indices) pipelineRes
 
-loadTexture :: Managed m => Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> m Present
+loadTexture :: MonadResource m => Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource  -> ShaderResource -> PipelineResource -> m Present
 loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes pipelineRes = do
   liftIO . print . descriptorSetLayouts $ textureShaderRes
-  textureSampler <- withTextureSampler phys device
-  textureDescriptorSetResource <- withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes)
+  textureSampler <- Lib.createTextureSampler phys device
+  textureDescriptorSetResource <- createDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes)
   let texCoords =
         [ Texture (V2 50 50) (V4 0 0 0 1) (V2 0 0)
         , Texture (V2 250 50) (V4 0 0 0 1) (V2 1 0)
@@ -526,7 +412,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
     } zero {
       Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
     } allocate
-  liftIO . runResourceT $ memCopy allocator texCoordsBufferAllocation texCoords
+  memCopy allocator texCoordsBufferAllocation texCoords
 
   let texIndices = [0, 1, 2, 2, 3, 0] :: VS.Vector Word32
   (texIndexBuffer, texIndexBufferAllocation, _) <- snd <$> Vma.withBuffer allocator zero
@@ -536,7 +422,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
     } zero {
       Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
     } allocate
-  liftIO . runResourceT $ memCopy allocator texIndexBufferAllocation texIndices
+  memCopy allocator texIndexBufferAllocation texIndices
   
   let texUniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
@@ -551,7 +437,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
     } allocate
-  liftIO . runResourceT $ memCopy allocator texUniformBufferAllocation (VS.fromList [texUniform, texUniform, texUniform, texUniform]) -- early free
+  memCopy allocator texUniformBufferAllocation (VS.fromList [texUniform, texUniform, texUniform, texUniform]) -- early free
   let texBufferInfos :: V.Vector DescriptorBufferInfo
       texBufferInfos =
         [ zero
@@ -584,7 +470,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
     } zero
     { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
     } allocate
-  liftIO . runResourceT $ memCopy allocator textureStagingBufferAllocation (imageData pixels)
+  memCopy allocator textureStagingBufferAllocation (imageData pixels)
   let textureFormat = FORMAT_R8G8B8A8_SRGB
   (textureImage, textureImageAllocation, _) <- snd <$> Vma.withImage allocator zero
     { imageType = IMAGE_TYPE_2D
@@ -620,7 +506,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
       ]
     transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 
-  (_imageViewKey, textureImageView) <- Lib.withImageView device textureFormat textureImage
+  textureImageView <- Lib.createImageView device textureFormat textureImage
   updateDescriptorSets device
     [ SomeStruct $ zero
       { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 2
@@ -649,325 +535,7 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
     ] []
   pure $ Present [texCoordsBuffer] texIndexBuffer (descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)) (fromIntegral . VS.length $ texIndices) pipelineRes
 
-type Managed m = MonadResource m
-
-data AppException
-  = ImageLoadException String
-  | VulkanDeviceNotFound
-  | VulkanAllocateMemoryException String
-  | VulkanGraphicsFamilyIndexException
-  | VulkanPresentFamilyIndexException
-  | VulkanTransferFamilyIndexException
-  | VulkanLayoutTransitionUnsupport
-  deriving (Show)
-
-instance Exception AppException
-
-tryWithM :: Monad m => a -> Maybe a -> m a
-tryWithM normal value = runMaybeT (hoistMaybe value) >>= \case
-  Just x -> pure x
-  Nothing -> pure normal
-
-tryWithEM :: Monad m => AppException -> Maybe a -> m a
-tryWithEM ex value = runExceptT (failWith ex value) >>= \case
-    Right x -> pure x
-    Left e -> throw e
-
-tryWith :: a -> Maybe a -> a
-tryWith = fromMaybe
-
-tryWithE :: AppException -> Maybe a -> a
-tryWithE ex = \case
-  Just x -> x
-  Nothing -> throw ex
-
-withSDL :: Managed m => m ()
-withSDL = do
-  _sdlInitKey <- allocate_ (SDL.initialize ([SDL.InitVideo] :: [SDL.InitFlag])) SDL.quit
-  _sdlVkKey <- allocate_ (SDL.vkLoadLibrary Nothing) SDL.vkUnloadLibrary
-  pure ()
-
-withWindow :: Managed m => Text -> Int -> Int -> m SDL.Window
-withWindow title width height = do
-  (_key, window) <- allocate (SDL.createWindow title SDL.defaultWindow
-    { SDL.windowInitialSize = SDL.V2 (fromIntegral width) (fromIntegral height)
-    , SDL.windowGraphicsContext = SDL.VulkanContext
-    , SDL.windowResizable = True--False
-    , SDL.windowMode = SDL.Windowed
-    , SDL.windowPosition = SDL.Centered
-    , SDL.windowBorder = False--True
-    })
-    SDL.destroyWindow
-  SDL.windowMinimumSize window SDL.$= SDL.V2 (fromIntegral width) (fromIntegral height)
-  pure window
-
-withInst :: Managed m => SDL.Window -> m Instance
-withInst window = do
-  extensionsCString <- SDL.vkGetInstanceExtensions window
-  extensions <- liftIO $ traverse packCString extensionsCString
-  let optionals =
-        [ KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -- the dependency of device extension EXT_MEMORY_BUDGET_EXTENSION_NAME
-        ]
-  createDebugInstanceFromRequirements (require extensions) (require optionals) zero { applicationInfo = Just appInfo }
-  where
-    require :: "extensions" ::: [ByteString] -> [InstanceRequirement]
-    require = map (flip (RequireInstanceExtension Nothing) minBound) . promote
-
-withSurface :: Managed m => Instance -> SDL.Window -> m SurfaceKHR
-withSurface inst window = do
-  (_key, surf) <- allocate (SurfaceKHR <$> SDL.vkCreateSurface window (castPtr . instanceHandle $ inst))
-    (flip (destroySurfaceKHR inst) Nothing)
-  pure surf
-
-withSurface' :: Instance -> SDL.Window -> Acquire SurfaceKHR
-withSurface' inst window = mkAcquire (SurfaceKHR <$> SDL.vkCreateSurface window (castPtr . instanceHandle $ inst)) (flip (destroySurfaceKHR inst) Nothing)
-
-getPhysicalDevice :: MonadIO m => Instance -> m PhysicalDevice
-getPhysicalDevice inst = do
-  (_, devices) <- enumeratePhysicalDevices inst
-  if null devices
-    then throw VulkanDeviceNotFound
-    else pure $ devices ! 0
-
-data QueueFamilyIndices = QueueFamilyIndices
-  { graphicsFamily :: !Word32
-  , presentFamily :: !Word32
-  , transferFamily :: !Word32
-  } deriving (Show)
-
-findQueueFamilyIndices :: MonadIO m => PhysicalDevice -> SurfaceKHR -> m QueueFamilyIndices
-findQueueFamilyIndices pdevice surf = do
-  queueFamilies <- getPhysicalDeviceQueueFamilyProperties pdevice
-  liftIO $ print queueFamilies
-  let graphicsQueueFamilyIndices = V.map fst . V.filter isGraphicsFamily . V.indexed $ queueFamilies
-  presentQueueFamilyIndices <- V.map fst <$> (V.filterM isPresentFamily . V.indexed $ queueFamilies)
-  let transferOnlyQueueFamilyIndices = V.map fst . V.filter isTransferOnlyFamily . V.indexed $ queueFamilies
-  let transferQueueFamilyIndices = V.map fst . V.filter isTransferFamily . V.indexed $ queueFamilies
-  let graphicsFamily = tryWithE VulkanGraphicsFamilyIndexException $ graphicsQueueFamilyIndices !? 0
-  let presentFamily = tryWithE VulkanPresentFamilyIndexException $ pickPresentFamilyIndices [graphicsFamily] presentQueueFamilyIndices !? 0
-  let transferFamily = if not . null $ transferOnlyQueueFamilyIndices
-        then transferOnlyQueueFamilyIndices ! 0
-        else tryWithE VulkanPresentFamilyIndexException (pickTransferFamilyIndices [graphicsFamily] [presentFamily] transferQueueFamilyIndices !? 0)
-  pure QueueFamilyIndices
-    { graphicsFamily = fromIntegral graphicsFamily
-    , presentFamily = fromIntegral presentFamily
-    , transferFamily = fromIntegral transferFamily
-    }
-  where
-    isGraphicsFamily :: (Int, QueueFamilyProperties) -> Bool
-    isGraphicsFamily (_i, q) = QUEUE_GRAPHICS_BIT .&. queueFlags q /= zeroBits && (queueCount q > 0)
-    isPresentFamily :: MonadIO m => (Int, QueueFamilyProperties) -> m Bool
-    isPresentFamily (i, _q) = getPhysicalDeviceSurfaceSupportKHR pdevice (fromIntegral i) surf
-    isTransferFamily :: (Int, QueueFamilyProperties) -> Bool
-    isTransferFamily (_i, q) = QUEUE_TRANSFER_BIT .&. queueFlags q /= zeroBits && (queueCount q > 0)
-    isTransferOnlyFamily :: (Int, QueueFamilyProperties) -> Bool
-    isTransferOnlyFamily (_i, q) = (QUEUE_TRANSFER_BIT .|. QUEUE_GRAPHICS_BIT .|. QUEUE_COMPUTE_BIT) .&. queueFlags q == QUEUE_TRANSFER_BIT && (queueCount q > 0)
-    -- prefer to pick present family which is different from selected graphics family
-    pickPresentFamilyIndices :: "graphicsQueueFamilyIndices" ::: V.Vector Int -> V.Vector Int -> V.Vector Int
-    pickPresentFamilyIndices gis pis = do
-      let left = V.toList pis \\ V.toList gis
-      if not . null $ left
-        then V.fromList left
-        else pis
-    -- prefer to pick transfer family which is different from selected graphics family and present family
-    -- prefer use selected graphics family than selected present family when no choice
-    pickTransferFamilyIndices :: "graphicsQueueFamilyIndices" ::: V.Vector Int -> "presentQueueFamilyIndices" ::: V.Vector Int -> V.Vector Int -> V.Vector Int
-    pickTransferFamilyIndices gis pis tis = do
-      let leftContainG = V.toList tis \\ V.toList pis
-      let left = leftContainG \\ V.toList gis 
-      if not . null $ left
-        then V.fromList left
-        else if not . null $ leftContainG
-        then V.fromList leftContainG
-        else tis
-
-withDevice :: Managed m => PhysicalDevice -> "queueFamilyIndices" ::: V.Vector Word32 -> m Device
-withDevice phys indices = do
-  let extensions = [ KHR_SWAPCHAIN_EXTENSION_NAME ]
-  let optionals =
-        [ EXT_MEMORY_BUDGET_EXTENSION_NAME -- vmaGetBudget
-        , KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -- vma use it automatically, promoted to API_VERSION_1_1
-        , KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME -- dependency of KHR_DEDICATED_ALLOCATION_EXTENSION_NAME, promoted to API_VERSION_1_1
-        -- KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME
-        -- , EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
-        -- , KHR_MAINTENANCE3_EXTENSION_NAME
-        -- , KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME
-        -- , KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
-        -- , KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME
-        -- , KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
-        -- , EXT_MEMORY_BUDGET_EXTENSION_NAME
-        ]
-  let optionalFeatures =
-        [ RequireDeviceFeature
-          { featureName   = "samplerAnisotropy"
-          , checkFeature  = samplerAnisotropy :: PhysicalDeviceFeatures -> Bool
-          , enableFeature = \f -> f { samplerAnisotropy = True } :: PhysicalDeviceFeatures
-          }
-        ]
-  let deviceCreateInfo :: DeviceCreateInfo '[]
-      deviceCreateInfo = zero
-        { queueCreateInfos = V.fromList
-          [ SomeStruct $ zero
-            { queueFamilyIndex = i
-            , queuePriorities = [ 1 ]
-            }
-          | i <- V.toList indices
-          ]
-        -- , enabledLayerNames = []
-        -- , enabledExtensionNames = extensions <> optionals
-        }
-  createDeviceFromRequirements (require extensions) (require optionals <> optionalFeatures) phys deviceCreateInfo
-  where
-    require :: "extensions" ::: [ByteString] -> [DeviceRequirement]
-    require = map (flip (RequireDeviceExtension Nothing) minBound) . promote
-
-data QueueResource = QueueResource
-  { graphicsQueue :: !Queue
-  , presentQueue :: !Queue
-  , transferQueue :: !Queue
-  } deriving (Show)
-
-getQueueResource :: MonadIO m => Device -> QueueFamilyIndices -> m QueueResource
-getQueueResource device QueueFamilyIndices {..} = do
-  graphicsQueue <- getDeviceQueue device graphicsFamily 0
-  presentQueue <- getDeviceQueue device presentFamily 0
-  transferQueue <- getDeviceQueue device transferFamily 0
-  pure QueueResource {..}
-
-data CommandPoolResource = CommandPoolResource
-  { graphicsCommandPool :: CommandPool
-  , transferCommandPool :: CommandPool
-  } deriving (Show)
-
-withCommandPoolResource :: Managed m => Device -> QueueFamilyIndices -> m CommandPoolResource
-withCommandPoolResource device QueueFamilyIndices {..} = do
-  graphicsCommandPool <- snd <$> withCommandPool device zero
-    { queueFamilyIndex = graphicsFamily
-    , flags = COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT --zeroBits
-    } Nothing allocate
-  transferCommandPool <- snd <$> withCommandPool device zero
-    { queueFamilyIndex = transferFamily
-    , flags = COMMAND_POOL_CREATE_TRANSIENT_BIT
-    } Nothing allocate
-  pure CommandPoolResource {..}
-
-withSingleTimeCommands :: MonadIO m => Device -> CommandPool -> Queue -> (CommandBuffer -> IO ()) -> m ()
-withSingleTimeCommands device commandPool queue f = liftIO . runResourceT $ do
-  commandBuffer <- V.head . snd <$> Vulkan.withCommandBuffers device zero
-    { commandPool = commandPool
-    , level = COMMAND_BUFFER_LEVEL_PRIMARY
-    , commandBufferCount = 1
-    } allocate
-  liftIO $ useCommandBuffer commandBuffer zero
-    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-    } (f commandBuffer)
-  fence <- snd <$> withFence device zero Nothing allocate
-  queueSubmit queue
-    [ SomeStruct (zero
-      { commandBuffers = [ commandBufferHandle commandBuffer ]
-      } :: SubmitInfo '[])
-    ] fence
-  _ <- waitForFences device [ fence ] True maxBound
-  pure ()
-
-data SwapchainResource = SwapchainResource
-  { swapchain :: !SwapchainKHR
-  , images :: !(V.Vector Image)
-  , imageViews :: !(V.Vector ImageView)
-  , framebuffers :: !(V.Vector Framebuffer)
-  , swapchainResourceKey :: ReleaseKey
-  }
-
-chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode
-chooseSharingMode indices | length indices == 1 = SHARING_MODE_EXCLUSIVE
-                          | otherwise = SHARING_MODE_CONCURRENT
-
-chooseFormat :: V.Vector SurfaceFormatKHR -> SurfaceFormatKHR
-chooseFormat formats = fromMaybe (V.head formats) $ V.find isSRGB formats
-  where
-    isSRGB = (==) SurfaceFormatKHR {format = FORMAT_B8G8R8A8_SRGB, colorSpace = COLOR_SPACE_SRGB_NONLINEAR_KHR}
-
-withSwapchain :: Managed m => PhysicalDevice -> Device -> SurfaceKHR -> SurfaceFormatKHR -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> RenderPass -> SwapchainKHR -> m SwapchainResource
-withSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapchain = do
-  (_, presentModes) <- getPhysicalDeviceSurfacePresentModesKHR phys surf
-  liftIO $ print presentModes
-  surfaceCaps <- getPhysicalDeviceSurfaceCapabilitiesKHR phys surf
-  let presentMode = tryWith PRESENT_MODE_FIFO_KHR (V.find (== PRESENT_MODE_MAILBOX_KHR) presentModes)
-  let sharingMode = chooseSharingMode indices
-  let swapchainCreateInfo :: SwapchainCreateInfoKHR '[]
-      swapchainCreateInfo = zero
-        { surface = surf
-        , minImageCount = minImageCount (surfaceCaps :: SurfaceCapabilitiesKHR) + 1
-        , imageFormat = format (surfaceFormat :: SurfaceFormatKHR)
-        , imageColorSpace = colorSpace surfaceFormat
-        , imageExtent = extent
-        , imageArrayLayers = 1
-        , imageUsage = IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-        , imageSharingMode = sharingMode
-        , queueFamilyIndices = indices
-        , preTransform = currentTransform (surfaceCaps :: SurfaceCapabilitiesKHR)
-        , compositeAlpha = COMPOSITE_ALPHA_OPAQUE_BIT_KHR
-        , presentMode = presentMode
-        , clipped = True
-        , oldSwapchain = oldSwapchain
-        }
-  (swapchainKey, swapchain) <- withSwapchainKHR device swapchainCreateInfo Nothing allocate
-  images <- snd <$> getSwapchainImagesKHR device swapchain
-  (imageViewKeys, imageViews) <- fmap V.unzip . mapM (Lib.withImageView device (format (surfaceFormat :: SurfaceFormatKHR))) $ images
-  (framebufferKeys, framebuffers) <- fmap V.unzip . mapM (Lib.withFramebuffer device extent renderPass) $ imageViews
-  releaseSwapchain <- unprotect swapchainKey
-  releaseImageViewKeys <- mapM_ unprotect imageViewKeys
-  releaseFramebufferKeys <- mapM_ unprotect framebufferKeys
-  swapchainResourceKey <- register $ do
-    -- release swapchainKey
-    -- mapM_ release imageViewKeys
-    -- mapM_ release framebufferKeys
-    pure ()
-  pure SwapchainResource {..}
-
-withImageView :: Managed m => Device -> Format -> Image -> m (ReleaseKey, ImageView)
-withImageView device format img = Vulkan.withImageView device zero
-  { image = img
-  , viewType = IMAGE_VIEW_TYPE_2D
-  , format = format
-  , components = zero
-    { r = COMPONENT_SWIZZLE_IDENTITY
-    , g = COMPONENT_SWIZZLE_IDENTITY
-    , b = COMPONENT_SWIZZLE_IDENTITY
-    , a = COMPONENT_SWIZZLE_IDENTITY
-    }
-  , subresourceRange = zero
-    { aspectMask = IMAGE_ASPECT_COLOR_BIT
-    , baseMipLevel = 0
-    , levelCount = 1
-    , baseArrayLayer = 0
-    , layerCount = 1
-    }
-  } Nothing allocate
-
-data ShaderResource = ShaderResource
-  { shaderStages :: !(V.Vector (SomeStruct PipelineShaderStageCreateInfo))
-  , descriptorSetLayouts :: !(V.Vector DescriptorSetLayout)
-  , descriptorSetLayoutCreateInfos :: !(V.Vector (DescriptorSetLayoutCreateInfo '[]))
-  , vertexInputState :: !(Maybe (SomeStruct PipelineVertexInputStateCreateInfo))
-  }
-  deriving (Show)
-
-withShaderModule :: Managed m => Device -> SpirV.ShaderInfo -> m ShaderModule
-withShaderModule device SpirV.ShaderInfo {..} = snd <$> Vulkan.withShaderModule device shaderModuleCreateInfo Nothing allocate
-
-withShaders :: Managed m => Device -> V.Vector ("spirv" ::: ByteString) -> m ShaderResource
-withShaders device spirvs = do
-  -- the reflection should be done in compile stage
-  reflects <- V.mapM SpirV.reflection' spirvs
-  let shaderInfos = SpirV.makeShaderInfo <$> reflects
-  shaderStages <- (join <$>) . V.mapM (liftA2 (<$>) SpirV.pipelineShaderStageCreateInfos (Lib.withShaderModule device)) $ shaderInfos
-  let descriptorSetLayoutCreateInfos = SpirV.makeDescriptorInfo reflects
-  descriptorSetLayouts <- mapM (Lib.withDescriptorSetLayout device) descriptorSetLayoutCreateInfos
-  let vertexInputState = SpirV.makeInputInfo reflects
-  pure ShaderResource {..}
-
-withShaderStages :: Managed m => Device -> m ShaderResource
+withShaderStages :: MonadIO m => Device -> m (ShaderResource, V.Vector ShaderModule)
 withShaderStages device = do
   let vertCode = [vert|
   #version 450
@@ -1003,9 +571,9 @@ withShaderStages device = do
     outColor = fragColor;
   }
   |]
-  withShaders device [ vertCode, fragCode ]
+  Lib.createShaderResource device [ vertCode, fragCode ]
 
-withTextureShaderStages :: Managed m => Device -> m ShaderResource
+withTextureShaderStages :: MonadIO m => Device -> m (ShaderResource, V.Vector ShaderModule)
 withTextureShaderStages device = do
   let vertCode = [vert|
   #version 450
@@ -1046,306 +614,5 @@ withTextureShaderStages device = do
     outColor = texture(texSampler, fragTexCoord); // for image use texSampler, for shape created by rasterfic use fragColor
   }
   |]
-  withShaders device [ vertCode, fragCode ]
-
-withDescriptorSetLayout :: Managed m => Device -> DescriptorSetLayoutCreateInfo '[] -> m DescriptorSetLayout
-withDescriptorSetLayout device descriptorSetLayoutCreateInfo =
-  snd <$> Vulkan.withDescriptorSetLayout device descriptorSetLayoutCreateInfo Nothing allocate
-
-data DescriptorSetResource = DescriptorSetResource
-  { descriptorPool :: !DescriptorPool
-  , descriptorSets :: !(V.Vector DescriptorSet)
-  } deriving (Show)
-
-withDescriptorSetResource :: Managed m => Device -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> m DescriptorSetResource
-withDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos = do
-  -- https://www.reddit.com/r/vulkan/comments/8u9zqr/having_trouble_understanding_descriptor_pool/e1e8d5f?utm_source=share&utm_medium=web2x&context=3
-  -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
-  -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
-  let descriptorPoolCreateInfo = makeDescriptorPoolCreateInfo (fromIntegral . length $ descriptorSetLayouts) descriptorSetLayoutCreateInfos
-  descriptorPool <- snd <$> withDescriptorPool device descriptorPoolCreateInfo Nothing allocate
-  descriptorSets <- snd <$> withDescriptorSets device zero
-    { descriptorPool = descriptorPool
-    , setLayouts = descriptorSetLayouts
-    } allocate
-  pure DescriptorSetResource {..}
-
-makeDescriptorPoolCreateInfo :: Word32 -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> DescriptorPoolCreateInfo '[]
-makeDescriptorPoolCreateInfo maxSets infos = zero
-  { poolSizes = V.fromList
-    [ zero
-      { type' = t
-      , descriptorCount = fromIntegral n
-      }
-    | (t, n) <- analyse infos ]
-  , maxSets = maxSets
-  , flags = DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT -- VUID-vkFreeDescriptorSets-descriptorPool-00312: descriptorPool must have been created with the VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag
-  }
-  where
-    analyse :: V.Vector (DescriptorSetLayoutCreateInfo '[]) -> [(DescriptorType, Int)]
-    analyse = map calculate . groupBy ((==) `on` fst) . sortOn fst . extract
-    extract :: V.Vector (DescriptorSetLayoutCreateInfo '[]) -> [(DescriptorType, Int)]
-    extract = map (liftA2 (,) tname (fromIntegral . dcount)) . V.toList . (bindings =<<)
-    calculate :: [(DescriptorType, Int)] -> (DescriptorType, Int)
-    calculate = liftA2 (,) (fst . head) (sum . (snd <$>))
-    tname = descriptorType :: DescriptorSetLayoutBinding -> DescriptorType
-    dcount = descriptorCount :: DescriptorSetLayoutBinding -> Word32
-
-withRenderPass :: Managed m => Device -> SurfaceFormatKHR -> m RenderPass
-withRenderPass device surfFormat = do
-  let colorAttachment = zero
-        { format = format (surfFormat :: SurfaceFormatKHR)
-        , samples = SAMPLE_COUNT_1_BIT
-        , loadOp = ATTACHMENT_LOAD_OP_CLEAR
-        , storeOp = ATTACHMENT_STORE_OP_STORE
-        , stencilLoadOp = ATTACHMENT_LOAD_OP_DONT_CARE
-        , stencilStoreOp = ATTACHMENT_STORE_OP_DONT_CARE
-        , initialLayout = IMAGE_LAYOUT_UNDEFINED
-        , finalLayout = IMAGE_LAYOUT_PRESENT_SRC_KHR
-        } :: AttachmentDescription
-  let colorAttachmentRef = zero
-        { attachment = 0
-        , layout = IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-        } :: AttachmentReference
-  let subpass = zero
-        { pipelineBindPoint = PIPELINE_BIND_POINT_GRAPHICS
-        , colorAttachments = [ colorAttachmentRef ]
-        } :: SubpassDescription
-  snd <$> Vulkan.withRenderPass device zero
-    { attachments = [ colorAttachment ]
-    , subpasses = [ subpass ]
-    } Nothing allocate
-
-withFramebuffer :: Managed m => Device -> Extent2D -> RenderPass -> ImageView -> m (ReleaseKey, Framebuffer)
-withFramebuffer device curExtent renderPass imageView = Vulkan.withFramebuffer device zero
-  { renderPass = renderPass
-  , attachments = [ imageView ]
-  , width = width (curExtent :: Extent2D)
-  , height = height (curExtent :: Extent2D)
-  , layers = 1
-  } Nothing allocate
-
-data PipelineResource = PipelineResource
-  { pipeline :: !Pipeline
-  , pipelineLayout :: !PipelineLayout
-  } deriving (Show)
-
-withPipeline :: Managed m => Device -> RenderPass -> ShaderResource -> m PipelineResource
-withPipeline device renderPass ShaderResource {..} = do
-  -- https://stackoverflow.com/questions/56928041/what-is-the-purpose-of-multiple-setlayoutcounts-of-vulkan-vkpipelinelayoutcreate
-  -- https://vulkan.lunarg.com/doc/view/1.2.135.0/linux/tutorial/html/08-init_pipeline_layout.html
-  (_, pipelineLayout) <- withPipelineLayout device zero
-    { setLayouts = descriptorSetLayouts
-    } Nothing allocate
-  liftIO $ print pipelineLayout
-  (_, (_result, pipelines)) <- withGraphicsPipelines device zero
-    [ SomeStruct $ zero
-      { stages = shaderStages
-      , vertexInputState = vertexInputState
-      , inputAssemblyState = Just zero
-        { topology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-        , primitiveRestartEnable = False
-        }
-      , viewportState = Just $ SomeStruct zero
-        { viewportCount = 1
-        , scissorCount = 1
-        }
-      , rasterizationState = SomeStruct $ zero
-        { depthClampEnable = False
-        , rasterizerDiscardEnable = False
-        , lineWidth = 1
-        , polygonMode = POLYGON_MODE_FILL
-        , cullMode = CULL_MODE_NONE -- NOTE: for 2D pipeline, no cull mode. while for 3D pipeline, needs set CULL_MODE_BACK_BIT
-        , frontFace = FRONT_FACE_CLOCKWISE
-        , depthBiasEnable = False
-        }
-      , multisampleState = Just $ SomeStruct $ zero
-        { sampleShadingEnable = False
-        , rasterizationSamples = SAMPLE_COUNT_1_BIT
-        , minSampleShading = 1
-        , sampleMask = [ maxBound ]
-        }
-      , depthStencilState = Nothing
-      , colorBlendState = Just $ SomeStruct $ zero
-        { logicOpEnable = False
-        , attachments =
-          [ zero
-            { colorWriteMask = COLOR_COMPONENT_R_BIT .|. COLOR_COMPONENT_G_BIT .|. COLOR_COMPONENT_B_BIT .|. COLOR_COMPONENT_A_BIT
-            , blendEnable = True
-            , srcColorBlendFactor = BLEND_FACTOR_SRC_ALPHA
-            , dstColorBlendFactor = BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
-            , colorBlendOp = BLEND_OP_ADD
-            , srcAlphaBlendFactor = BLEND_FACTOR_ONE
-            , dstAlphaBlendFactor = BLEND_FACTOR_ZERO
-            , alphaBlendOp = BLEND_OP_ADD
-            } ] }
-      , dynamicState = Just $ zero
-        { dynamicStates =
-          [ DYNAMIC_STATE_VIEWPORT
-          , DYNAMIC_STATE_SCISSOR ] }
-      , layout = pipelineLayout
-      , renderPass = renderPass
-      , subpass = 0
-      , basePipelineHandle = zero
-      } ] Nothing allocate
-  let pipeline = pipelines ! 0
-  pure PipelineResource {..}
-
-withTextureSampler :: Managed m => PhysicalDevice -> Device -> m Sampler
-withTextureSampler phys device = do
-  supportAnisotropy <- samplerAnisotropy <$> getPhysicalDeviceFeatures phys
-  maxAnisotropy <- maxSamplerAnisotropy . limits <$> getPhysicalDeviceProperties phys
-  snd <$> withSampler device zero
-    { magFilter = FILTER_LINEAR
-    , minFilter = FILTER_LINEAR
-    , addressModeU = SAMPLER_ADDRESS_MODE_REPEAT -- SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
-    , addressModeV = SAMPLER_ADDRESS_MODE_REPEAT -- SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
-    , addressModeW = SAMPLER_ADDRESS_MODE_REPEAT -- SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
-    , anisotropyEnable = supportAnisotropy
-    , maxAnisotropy = bool 1 maxAnisotropy supportAnisotropy
-    , borderColor = BORDER_COLOR_INT_TRANSPARENT_BLACK
-    , unnormalizedCoordinates = False
-    , compareEnable = False
-    , compareOp = COMPARE_OP_ALWAYS
-    , mipmapMode = SAMPLER_MIPMAP_MODE_LINEAR
-    , mipLodBias = 0
-    , minLod = 0
-    , maxLod = 0
-    } Nothing allocate
-
-transitionImageLayout :: MonadIO m => CommandBuffer -> Image -> "oldLayout" ::: ImageLayout -> "newLayout" ::: ImageLayout -> m ()
-transitionImageLayout commandBuffer image oldLayout newLayout = do
-  let barrier = zero
-        { oldLayout = oldLayout
-        , newLayout = newLayout
-        , image = image
-        , srcQueueFamilyIndex = QUEUE_FAMILY_IGNORED
-        , dstQueueFamilyIndex = QUEUE_FAMILY_IGNORED
-        , subresourceRange = zero
-          { aspectMask = IMAGE_ASPECT_COLOR_BIT
-          , baseMipLevel = 0
-          , levelCount = 1
-          , baseArrayLayer = 0
-          , layerCount = 1
-          }
-        }
-  case (oldLayout, newLayout) of
-    (IMAGE_LAYOUT_UNDEFINED, IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) ->
-      cmdPipelineBarrier commandBuffer PIPELINE_STAGE_TOP_OF_PIPE_BIT PIPELINE_STAGE_TRANSFER_BIT zero [] []
-      [ SomeStruct (barrier
-        { srcAccessMask = zero
-        , dstAccessMask = ACCESS_TRANSFER_WRITE_BIT
-        } :: ImageMemoryBarrier '[]) ]
-    (IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) ->
-      cmdPipelineBarrier commandBuffer PIPELINE_STAGE_TRANSFER_BIT PIPELINE_STAGE_FRAGMENT_SHADER_BIT zero [] []
-      [ SomeStruct (barrier
-        { srcAccessMask = ACCESS_TRANSFER_WRITE_BIT
-        , dstAccessMask = ACCESS_SHADER_READ_BIT
-        } :: ImageMemoryBarrier '[]) ]
-    _ -> throw VulkanLayoutTransitionUnsupport
-
-data CommandBufferResource = CommandBufferResource
-  { commandPool :: CommandPool
-  , commandBuffers :: V.Vector CommandBuffer
-  }
-
-withCommandBuffers :: Managed m => Device -> CommandPool -> Word32 -> m (V.Vector CommandBuffer)
-withCommandBuffers device commandPool frameSize =
-  Vulkan.withCommandBuffers device zero
-    { commandPool = commandPool
-    , level = COMMAND_BUFFER_LEVEL_PRIMARY
-    , commandBufferCount = frameSize
-    } pure -- TODO
-
-withCommandBufferResource :: Managed m => Device -> CommandPool -> Word32 -> m CommandBufferResource
-withCommandBufferResource device commandPool frameSize = do
-  commandBuffers <- Lib.withCommandBuffers device commandPool frameSize
-  liftIO $ print $ V.map commandBufferHandle commandBuffers
-  pure $ CommandBufferResource
-    { commandPool = commandPool
-    , commandBuffers = commandBuffers
-    }
-
-data Present = Present
-  { vertexBuffers :: !(V.Vector Buffer)
-  , indexBuffer :: !Buffer
-  , descriptorSets :: !(V.Vector DescriptorSet)
-  , drawSize :: !Word32
-  , pipelineResource :: !PipelineResource
-  }
-
-submitCommand :: MonadIO m
-              => "renderArea" ::: Extent2D
-              -> RenderPass
-              -> V.Vector Present
-              -> (CommandBuffer, Framebuffer)
-              -> m ()
-submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
-  let viewports =
-        [ Viewport
-          { x = 0
-          , y = 0
-          , width = fromIntegral width
-          , height = fromIntegral height
-          , minDepth = 0
-          , maxDepth = 1
-          }
-        ] :: V.Vector Viewport
-  let scissors =
-        [ Rect2D
-          { offset = Offset2D 0 0
-          , extent = extent
-          }
-        ] :: V.Vector Rect2D
-  liftIO $ useCommandBuffer commandBuffer zero -- do
-    { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT -- COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
-    } $ cmdUseRenderPass commandBuffer zero
-      { renderPass = renderPass
-      , framebuffer = framebuffer
-      , renderArea = Rect2D
-        { offset = zero
-        , extent = extent
-        }
-      , clearValues = [ Color $ Float32 1 1 1 1 ]
-      } SUBPASS_CONTENTS_INLINE $ mapM_ (presentCmd viewports scissors) presents
-  where
-    presentCmd :: V.Vector Viewport -> V.Vector Rect2D -> Present -> IO ()
-    presentCmd viewports scissors Present {..} = do
-      cmdBindPipeline commandBuffer PIPELINE_BIND_POINT_GRAPHICS ((pipeline :: PipelineResource -> Pipeline) pipelineResource)
-      let offsets = 0 <$ vertexBuffers
-      cmdSetViewport commandBuffer 0 viewports
-      cmdSetScissor commandBuffer 0 scissors
-      cmdBindVertexBuffers commandBuffer 0 vertexBuffers offsets
-      cmdBindIndexBuffer commandBuffer indexBuffer 0 INDEX_TYPE_UINT32
-      cmdBindDescriptorSets commandBuffer PIPELINE_BIND_POINT_GRAPHICS ((pipelineLayout :: PipelineResource -> PipelineLayout) pipelineResource) 0 descriptorSets []
-      cmdDrawIndexed commandBuffer drawSize 1 0 0 0
-      --cmdDraw commandBuffer drawSize 1 0 0
-
-data SyncResource = SyncResource
-  { imageAvailableSemaphores :: !(V.Vector Semaphore)
-  , renderFinishedSemaphores :: !(V.Vector Semaphore)
-  , submitFinishedFences :: !(V.Vector Fence)
-  }
-
-withSyncResource :: Managed m => Device -> V.Vector Framebuffer -> m SyncResource
-withSyncResource device framebuffers = do
-  imageAvailableSemaphores <- mapM (const makeSemaphore) framebuffers
-  renderFinishedSemaphores <- mapM (const makeSemaphore) framebuffers
-  submitFinishedFences <- mapM (const makeFence) framebuffers
-  pure $ SyncResource {..}
-  where
-    makeSemaphore = snd <$> withSemaphore device zero Nothing allocate
-    makeFence = snd <$> withFence device zero { flags = FENCE_CREATE_SIGNALED_BIT } Nothing allocate
-
-memCopy :: forall a m . (Storable a, Managed m) => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> m ()
-memCopy allocator memAllocation datas = do
-  bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
-  liftIO $ VS.unsafeWith datas $ \ptr ->
-    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral (sizeOf (undefined :: a)) * VS.length datas
-
-memCopyU :: forall a m . (Storable a, Managed m) => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> a -> m ()
-memCopyU allocator memAllocation datas = do
-  bufferMemoryPtr <- snd <$> Vma.withMappedMemory allocator memAllocation allocate
-  liftIO $ with datas $ \ptr ->
-    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral . sizeOf $ (undefined :: a)
+  Lib.createShaderResource device [ vertCode, fragCode ]
 
