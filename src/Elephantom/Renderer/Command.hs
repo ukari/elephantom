@@ -52,7 +52,6 @@ submitCommand :: MonadIO m
 submitCommand app extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
   let viewport = makeViewport app extent
   let viewports = [ viewport ] :: V.Vector Viewport
-  liftIO . print $ show viewport
   let scissors =
         [ Rect2D
           { offset = Offset2D 0 0
