@@ -23,6 +23,7 @@ module Elephantom.Renderer
   , module Elephantom.Renderer.Surface
   , module Elephantom.Renderer.Swapchain
   , module Elephantom.Renderer.Util
+  , module Elephantom.Renderer.Viewport
   , module Elephantom.Renderer.Vma
   , module Elephantom.Renderer.Window
   ) where
@@ -51,5 +52,6 @@ import Elephantom.Renderer.Shader
 import Elephantom.Renderer.Surface
 import Elephantom.Renderer.Swapchain
 import Elephantom.Renderer.Util
+import Elephantom.Renderer.Viewport
 import Elephantom.Renderer.Vma
 import Elephantom.Renderer.Window

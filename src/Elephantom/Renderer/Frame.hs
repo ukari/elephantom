@@ -32,13 +32,15 @@ import Control.Concurrent (MVar, readMVar)
 import Control.Exception (throw)
 import qualified Control.Exception as Ex
 
+import Elephantom.Application (Application)
 import Elephantom.Renderer.CommandBuffer (CommandBufferResource (..), createCommandBufferResource, freeCommandBufferResource)
 import Elephantom.Renderer.Swapchain (SwapchainResource (..), createSwapchain, destroySwapchain)
 import Elephantom.Renderer.Present (Present)
 import Elephantom.Renderer.Command (submitCommand)
 
 data Context = Context
-  { phys :: !PhysicalDevice
+  { application :: !Application
+  , phys :: !PhysicalDevice
   , device :: !Device
   , graphicsQueue :: !Queue
   , presentQueue :: !Queue
@@ -81,20 +83,31 @@ destroyFrameSync device FrameSync {..} = do
 
 recreateSwapchain :: MonadIO m => Context -> FrameSync -> CommandBufferResource -> SwapchainResource -> m (FrameSync, CommandBufferResource, SwapchainResource)
 recreateSwapchain Context {..} oldFrameSync@FrameSync {..} oldCmdRes@CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain } = do
-  --deviceWaitIdleSafe device
+  deviceWaitIdleSafe device
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "recreate width " <> show extent
-  -- let fence = submitFinishedFences ! sync
-  -- --Vulkan.resetFences device [ fence ]
-  -- --queueSubmit graphicsQueue [] fence
-  -- liftIO . print $ "reset fence " <> show fence
-  swapchainRes@SwapchainResource { framebuffers } <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
-  destroySwapchain device oldSwapchainRes
-  frameSync <- createFrameSync device framebuffers
-  destroyFrameSync device oldFrameSync
+
   freeCommandBufferResource device oldCmdRes
   commandBufferRes <- createCommandBufferResource device commandPool frameSize
+  
+  -- let fence = submitFinishedFences ! sync
+  -- queueSubmit graphicsQueue [] fence
+  --Vulkan.resetFences device [ fence ]
+  
+  -- mapM_ (queueSubmit graphicsQueue []) submitFinishedFences
+  -- Vulkan.resetFences device submitFinishedFences
+  
+  -- liftIO . print $ "reset fence " <> show fence
+
+  --_ <- waitForFencesSafe device submitFinishedFences True maxBound
+  destroyFrameSync device oldFrameSync
+
+  swapchainRes@SwapchainResource { framebuffers } <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
+  destroySwapchain device oldSwapchainRes
+  
+  frameSync <- createFrameSync device framebuffers
+  
   deviceWaitIdleSafe device
   pure (frameSync, commandBufferRes, swapchainRes)
 
@@ -108,7 +121,9 @@ drawFrameHandler _ _ _ _ e = do
 
 drawFrame :: (MonadIO m) => (Context, FrameSync, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, FrameSync, CommandBufferResource, SwapchainResource))
 drawFrame (ctx@Context {..}, frameSync@FrameSync {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (drawFrameHandler ctx frameSync cmdr swpr) $ do
-  
+  let imageAvailableSemaphore = imageAvailableSemaphores ! sync
+  liftIO . print $ "before acquire"
+  imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
   liftIO . print $ "width " <> show extent
@@ -118,18 +133,31 @@ drawFrame (ctx@Context {..}, frameSync@FrameSync {..}, cmdr@CommandBufferResourc
   
   let commandBuffer = commandBuffers ! sync
   presents <- liftIO . readMVar $ presentsMVar
+
   -- deviceWaitIdleSafe device
-  -- resetCommandBuffer commandBuffer COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-  submitCommand extent renderPass presents (commandBuffer, framebuffers! sync)
-  let imageAvailableSemaphore = imageAvailableSemaphores ! sync
-  let renderFinishedSemaphore = renderFinishedSemaphores ! sync
+
   let fence = submitFinishedFences ! sync
   liftIO . print $ "wait for fence " <> show fence
+  
   _ <- waitForFencesSafe device [ fence ] True maxBound
-  liftIO . print $ "before reset"
+  
+  liftIO . print $ "before reset fence"
   resetFences device [ fence ]
-  liftIO . print $ "before acquire"
-  imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
+  resetCommandBuffer commandBuffer COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+ 
+  
+  liftIO . print $ "record command " <> show (commandBufferHandle commandBuffer)
+  liftIO . print $ show application
+  liftIO . print $ show extent
+  submitCommand application extent renderPass presents (commandBuffer, framebuffers! sync)
+  
+  let renderFinishedSemaphore = renderFinishedSemaphores ! sync
+  
+  --liftIO . print $ "wait for fence " <> show fence
+  --_ <- waitForFencesSafe device [ fence ] True maxBound
+
+  
+  
   liftIO . print $ "submit"
   queueSubmit graphicsQueue
     [ SomeStruct $ zero

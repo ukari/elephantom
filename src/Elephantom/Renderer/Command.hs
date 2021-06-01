@@ -17,8 +17,10 @@ import qualified Data.Vector as V
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
+import Elephantom.Application (Application (..))
 import Elephantom.Renderer.Present (Present (..))
 import Elephantom.Renderer.Pipeline (PipelineResource (..))
+import Elephantom.Renderer.Viewport (makeViewport)
 
 withSingleTimeCommands :: MonadIO m => Device -> CommandPool -> Queue -> (CommandBuffer -> IO ()) -> m ()
 withSingleTimeCommands device commandPool queue f = do
@@ -41,22 +43,16 @@ withSingleTimeCommands device commandPool queue f = do
   destroyFence device fence Nothing
 
 submitCommand :: MonadIO m
-              => "renderArea" ::: Extent2D
+              => Application
+              -> "renderArea" ::: Extent2D
               -> RenderPass
               -> V.Vector Present
               -> (CommandBuffer, Framebuffer)
               -> m ()
-submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
-  let viewports =
-        [ Viewport
-          { x = 0
-          , y = 0
-          , width = fromIntegral width
-          , height = fromIntegral height
-          , minDepth = 0
-          , maxDepth = 1
-          }
-        ] :: V.Vector Viewport
+submitCommand app extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
+  let viewport = makeViewport app extent
+  let viewports = [ viewport ] :: V.Vector Viewport
+  liftIO . print $ show viewport
   let scissors =
         [ Rect2D
           { offset = Offset2D 0 0
@@ -66,14 +62,14 @@ submitCommand extent@Extent2D {..} renderPass presents (commandBuffer, framebuff
   liftIO $ useCommandBuffer commandBuffer zero -- do
     { flags = COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT -- COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT
     } $ cmdUseRenderPass commandBuffer zero
-      { renderPass = renderPass
-      , framebuffer = framebuffer
-      , renderArea = Rect2D
-        { offset = zero
-        , extent = extent
-        }
-      , clearValues = [ Color $ Float32 1 1 1 1 ]
-      } SUBPASS_CONTENTS_INLINE $ mapM_ (presentCmd viewports scissors) presents
+    { renderPass = renderPass
+    , framebuffer = framebuffer
+    , renderArea = Rect2D
+      { offset = zero
+      , extent = extent
+      }
+    , clearValues = [ Color $ Float32 1 1 1 1 ]
+    } SUBPASS_CONTENTS_INLINE $ mapM_ (presentCmd viewports scissors) presents
   where
     presentCmd :: V.Vector Viewport -> V.Vector Rect2D -> Present -> IO ()
     presentCmd viewports scissors Present {..} = do

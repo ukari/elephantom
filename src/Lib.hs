@@ -131,7 +131,7 @@ import Offset
 import qualified SpirV
 import Elephantom.Renderer
 import qualified Elephantom.Renderer as Lib
-import Elephantom.Application (defaultApplication)
+import Elephantom.Application (Application (..), defaultApplication)
 
 testRelease :: IO ()
 testRelease = runResourceT $ do
@@ -259,17 +259,22 @@ rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  let application = defaultApplication
+  let application@Application {..} = defaultApplication
+
   eventQueue <- liftIO newQueue
   withSDL
-  window <- withWindow "test" 500 500
+  window <- withWindow "test" width height
+  _ <- liftIO . forkIO . drain . asyncly $
+    parallel
+      (constRate (fromIntegral inputRate) . repeatM . liftIO . eventLoop $ eventQueue)
+      (repeatM . runStdoutLoggingT . listenLoop $ eventQueue)
   inst <- withInst application window
   surf <- withSurface inst window
   phys <- getPhysicalDevice inst
   liftIO . print . maxBoundDescriptorSets . limits =<< getPhysicalDeviceProperties phys
   qIndices <- findQueueFamilyIndices phys surf
   liftIO $ print qIndices
-  let queueFamilyIndices = uniq . modify V.sort $ fmap ($ qIndices) [graphicsFamily, presentFamily, transferFamily]
+  let queueFamilyIndices = uniq . modify V.sort $ fmap ($ qIndices) [ graphicsFamily, presentFamily, transferFamily ]
   device <- Lib.withDevice phys queueFamilyIndices
   liftIO $ print $ "device " <> show (deviceHandle device)
   queueRes@QueueResource {..} <- getQueueResource device qIndices
@@ -299,32 +304,31 @@ someFunc = runResourceT $ do
   pipelineRes <- snd <$> allocate (createPipelineResource device renderPass shaderRes) (destroyPipelineResource device)
   mapM_ (Lib.destroyShaderModule device) shaderModules
   trianglePresent <- loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes
+  Lib.destroyShaderResource device shaderRes
   (textureShaderRes, textureShaderModules) <- Lib.withTextureShaderStages device
   texturePipelineRes <- snd <$> allocate (Lib.createPipelineResource device renderPass textureShaderRes) (destroyPipelineResource device)
   mapM_ (Lib.destroyShaderModule device) textureShaderModules
   texturePresent <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
+  Lib.destroyShaderResource device textureShaderRes
   -- resource load end
-
-  let fps = 1
-  let inputfps = 120
-
   
-  V2 width height <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  V2 windowWidth windowHeight <- SDL.vkGetDrawableSize window
+  let extent = Extent2D (fromIntegral windowWidth) (fromIntegral windowHeight)
   swapchainRes@SwapchainResource {..} <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
-  let frameSize = fromIntegral . length $ framebuffers
-  commandBufferRes@CommandBufferResource {..} <- createCommandBufferResource device graphicsCommandPool frameSize
+  
   -- mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
   presentsMVar <- liftIO . newMVar $ [ trianglePresent, texturePresent ]
   frameSync@FrameSync {..} <- createFrameSync device framebuffers
+
+  commandBufferRes@CommandBufferResource {..} <- createCommandBufferResource device graphicsCommandPool frameSize
   let ctx = Context {..}
 
-  _ <- liftIO . forkIO . drain . asyncly $
-    parallel
-      (constRate inputfps $ repeatM $ liftIO $ eventLoop eventQueue)
-      (repeatM $ runStdoutLoggingT $ listenLoop eventQueue)
-  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate fps . maxRate fps . S.iterateM (maybe (pure Nothing) (drawFrame)) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
+  
+  liftIO . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
   deviceWaitIdleSafe device
+  -- Lib.destroySwapchain device swapchainRes
+  -- Lib.freeCommandBufferResource device commandBufferRes
+  -- Lib.destroyFrameSync device frameSync
   return undefined
 
 loadTriangle :: MonadResource m => Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present

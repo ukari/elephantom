@@ -11,6 +11,8 @@ module Elephantom.Renderer.CommandPool
 import Vulkan
 import Vulkan.Zero
 
+import Data.Bits ((.|.))
+
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Trans.Resource (MonadResource, allocate)
 
@@ -27,9 +29,11 @@ createCommandPoolResource device QueueFamilyIndices {..} = do
     { queueFamilyIndex = graphicsFamily
     , flags = COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT --zeroBits
     } Nothing
+  -- https://www.khronos.org/registry/vulkan/specs/1.1-khr-extensions/html/chap6.html
+  -- VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT allows any command buffer allocated from a pool to be individually reset to the initial state; either by calling vkResetCommandBuffer, or via the implicit reset when calling vkBeginCommandBuffer. If this flag is not set on a pool, then vkResetCommandBuffer must not be called for any command buffer allocated from that pool.
   transferCommandPool <- createCommandPool device zero
     { queueFamilyIndex = transferFamily
-    , flags = COMMAND_POOL_CREATE_TRANSIENT_BIT
+    , flags = COMMAND_POOL_CREATE_TRANSIENT_BIT .|. COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT -- 
     } Nothing
   pure CommandPoolResource {..}
 
