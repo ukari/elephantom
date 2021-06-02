@@ -19,7 +19,8 @@ createWindow title width height = do
     , SDL.windowResizable = True--False
     , SDL.windowMode = SDL.Windowed
     , SDL.windowPosition = SDL.Centered
-    , SDL.windowBorder = False--True  
+    , SDL.windowBorder = False--True
+    , SDL.windowHighDPI = True
     }
   SDL.windowMinimumSize window SDL.$= SDL.V2 (fromIntegral width) (fromIntegral height)
   pure window

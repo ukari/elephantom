@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 523931f39f8c2015c53c78c6d6e6a41278dc3988d3524bc72d886d8a352376eb
+-- hash: 1f3255e687d297b20456c9a1a3f5053d99eb7edf21b4ce5c3f4ef7fa9c988153
 
 name:           elephantom
 version:        0.1.0.0
@@ -56,6 +56,7 @@ library
       Elephantom.Renderer.Viewport
       Elephantom.Renderer.Vma
       Elephantom.Renderer.Window
+      Elephantom.Rendering.Text
       Event
       Event.Input
       Event.InputEvent
@@ -93,6 +94,7 @@ library
       src
   build-depends:
       Cabal
+    , FontyFruity
     , JuicyPixels
     , JuicyPixels-repa
     , Rasterific

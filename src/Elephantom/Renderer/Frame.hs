@@ -11,6 +11,7 @@ module Elephantom.Renderer.Frame
   , recreateSwapchain
   , drawFrameHandler
   , drawFrame
+  , cleanupFrame
   ) where
 
 import qualified SDL
@@ -28,8 +29,8 @@ import Data.Vector ((!))
 import qualified Data.Vector as V
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Concurrent (MVar, readMVar)
-import Control.Exception (throw)
+import Control.Concurrent (MVar, readMVar, swapMVar)
+import Control.Exception (AsyncException (..), SomeAsyncException (..), throw)
 import qualified Control.Exception as Ex
 
 import Elephantom.Application (Application)
@@ -50,6 +51,7 @@ data Context = Context
   , surfaceFormat :: !SurfaceFormatKHR
   , renderPass :: !RenderPass
   , presentsMVar :: !(MVar (V.Vector Present))
+  , cleanupMVar :: !(MVar (FrameSync, CommandBufferResource, SwapchainResource))
   }
 
 data FrameSync = FrameSync
@@ -81,8 +83,8 @@ destroyFrameSync device FrameSync {..} = do
     freeSemaphore = flip (destroySemaphore device) Nothing
     freeFence = flip (destroyFence device) Nothing
 
-recreateSwapchain :: MonadIO m => Context -> FrameSync -> CommandBufferResource -> SwapchainResource -> m (FrameSync, CommandBufferResource, SwapchainResource)
-recreateSwapchain Context {..} oldFrameSync@FrameSync {..} oldCmdRes@CommandBufferResource {..} oldSwapchainRes@SwapchainResource { swapchain } = do
+recreateSwapchain :: MonadIO m => (Context, FrameSync, CommandBufferResource, SwapchainResource) -> m (FrameSync, CommandBufferResource, SwapchainResource)
+recreateSwapchain (Context {..}, oldFrameSync@FrameSync {..}, oldCmdRes@CommandBufferResource {..}, oldSwapchainRes@SwapchainResource { swapchain }) = do
   deviceWaitIdleSafe device
 
   freeCommandBufferResource device oldCmdRes
@@ -96,18 +98,18 @@ recreateSwapchain Context {..} oldFrameSync@FrameSync {..} oldCmdRes@CommandBuff
   destroySwapchain device oldSwapchainRes
 
   frameSync <- createFrameSync device framebuffers
-
+  _ <- liftIO . swapMVar cleanupMVar $ (frameSync, commandBufferRes, swapchainRes) 
   deviceWaitIdleSafe device
   pure (frameSync, commandBufferRes, swapchainRes)
 
-drawFrameHandler :: (MonadIO m) => Context -> FrameSync -> CommandBufferResource -> SwapchainResource -> VulkanException -> m (Maybe (Context, FrameSync, CommandBufferResource, SwapchainResource))
-drawFrameHandler ctx frame cmdr swpr (VulkanException _e@ERROR_OUT_OF_DATE_KHR) = do
-  (frameSync, commandBufferRes, swapchainRes) <- recreateSwapchain ctx frame cmdr swpr
+drawFrameHandler :: MonadIO m => (Context, FrameSync, CommandBufferResource, SwapchainResource) -> VulkanException -> m (Maybe (Context, FrameSync, CommandBufferResource, SwapchainResource))
+drawFrameHandler frame@(ctx, _, _, _) (VulkanException _e@ERROR_OUT_OF_DATE_KHR) = do
+  (frameSync, commandBufferRes, swapchainRes) <- recreateSwapchain frame
   pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
-drawFrameHandler _ _ _ _ e = throw e
+drawFrameHandler _ e = throw e
 
-drawFrame :: (MonadIO m) => (Context, FrameSync, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, FrameSync, CommandBufferResource, SwapchainResource))
-drawFrame (ctx@Context {..}, frameSync@FrameSync {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (drawFrameHandler ctx frameSync cmdr swpr) $ do
+drawFrame :: MonadIO m => (Context, FrameSync, CommandBufferResource, SwapchainResource) -> m (Maybe (Context, FrameSync, CommandBufferResource, SwapchainResource))
+drawFrame frame@(ctx@Context {..}, frameSync@FrameSync {..}, cmdr@CommandBufferResource {..}, swpr@SwapchainResource {..}) = (fmap liftIO . Ex.handle) (drawFrameHandler frame) $ do
   let imageAvailableSemaphore = imageAvailableSemaphores ! sync
   imageIndex <- snd <$> acquireNextImageKHRSafe device swapchain maxBound imageAvailableSemaphore zero
 
@@ -147,3 +149,11 @@ drawFrame (ctx@Context {..}, frameSync@FrameSync {..}, cmdr@CommandBufferResourc
     , cmdr
     , swpr
     )
+
+cleanupFrame :: MonadIO m => Device -> MVar (FrameSync, CommandBufferResource, SwapchainResource) -> m ()
+cleanupFrame device cleanupMVar = do
+  (frameSync, cmdr, swpr) <- liftIO . readMVar $ cleanupMVar
+  deviceWaitIdleSafe device
+  freeCommandBufferResource device cmdr
+  destroyFrameSync device frameSync
+  destroySwapchain device swpr

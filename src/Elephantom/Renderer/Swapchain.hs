@@ -67,6 +67,7 @@ createSwapchain phys device surf surfaceFormat indices extent renderPass oldSwap
   swapchain <- createSwapchainKHR device swapchainCreateInfo Nothing
   images <- snd <$> getSwapchainImagesKHR device swapchain
   imageViews <- mapM (createImageView device (format (surfaceFormat :: SurfaceFormatKHR))) images
+  liftIO . print $ "imageViews " <> show imageViews
   framebuffers <- mapM (createFramebuffer device extent renderPass) imageViews
   pure SwapchainResource {..}
 

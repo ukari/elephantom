@@ -60,6 +60,7 @@ library:
   - repa
   - JuicyPixels-repa
   - JuicyPixels
+  - FontyFruity
   - Rasterific
   - errors
   - fused-effects
