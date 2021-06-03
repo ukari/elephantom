@@ -55,10 +55,6 @@ destroyShaderResource :: MonadIO m => Device -> ShaderResource -> m ()
 destroyShaderResource device ShaderResource {..} = mapM_ (destroyDescriptorSetLayout device) descriptorSetLayouts
 
 consfmap :: (Monad f, Functor f) => (a -> b) -> f a -> f (b, a)
-consfmap f fa = combine (f <$> fa) fa
-
-combine :: Monad m => m a -> m b -> m (a, b)
-combine ma mb = do
-  a <- ma
-  b <- mb
-  pure (a, b)
+consfmap f fa = do
+  a <- fa
+  pure (f a, a)

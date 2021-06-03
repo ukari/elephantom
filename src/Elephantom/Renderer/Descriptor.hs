@@ -23,7 +23,7 @@ import Data.Function (on)
 import Control.Applicative (liftA2)
 import Control.Monad.IO.Class (MonadIO)
 
-import Acquire (Cleaner, acquire)
+import Acquire (MonadCleaner, acquireT)
 
 data DescriptorSetResource = DescriptorSetResource
   { descriptorPool :: !DescriptorPool
@@ -56,8 +56,8 @@ destroyDescriptorSetResource device DescriptorSetResource {..} = do
   freeDescriptorSets device descriptorPool descriptorSets
   destroyDescriptorPool device descriptorPool Nothing
 
-acquireDescriptorSetResource :: MonadIO m => Device -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> m (Cleaner, DescriptorSetResource)
-acquireDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos = acquire (createDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos) (destroyDescriptorSetResource device)
+acquireDescriptorSetResource :: MonadCleaner m => Device -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> m DescriptorSetResource
+acquireDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos = acquireT (createDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos) (destroyDescriptorSetResource device)
 
 makeDescriptorPoolCreateInfo :: Word32 -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> DescriptorPoolCreateInfo '[]
 makeDescriptorPoolCreateInfo maxSets infos = zero

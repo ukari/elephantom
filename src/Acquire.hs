@@ -12,7 +12,7 @@ module Acquire
   , fromAcquire
   , acquire
   , cleanup
-  , allocate
+  , acquireT
   , register
   , runCleanerT
   , collect
@@ -97,7 +97,7 @@ fromAcquire :: MonadIO m => Acquire a -> m (Cleaner, a)
 fromAcquire (Acquire acq cleaner) = acquire acq cleaner
 
 acquire :: MonadIO m => IO a -> (a -> IO ()) -> m (Cleaner, a)
-acquire  acq cleaner = do
+acquire acq cleaner = do
   res <- liftIO acq
   pure (Cleaner . singleton . Clean cleaner $ res, res)
 
@@ -107,8 +107,8 @@ cleanup = foldMap clean . reverse . unCleaner
     clean :: Clean -> IO ()
     clean (Clean cleaner res) = cleaner res
 
-allocate :: MonadCleaner m => IO r -> (r -> IO ()) -> m r
-allocate create destroy = do
+acquireT :: MonadCleaner m => IO r -> (r -> IO ()) -> m r
+acquireT create destroy = do
   res <- liftIO create
   register . mkCleaner . destroy $ res
   pure res

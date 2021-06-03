@@ -14,7 +14,7 @@ import Data.Bool (bool)
 
 import Control.Monad.IO.Class (MonadIO)
 
-import Acquire (Cleaner, acquire)
+import Acquire (MonadCleaner, acquireT)
 
 createTextureSampler :: MonadIO m => PhysicalDevice -> Device -> m Sampler
 createTextureSampler phys device = do
@@ -42,5 +42,5 @@ createTextureSampler phys device = do
 destroySampler :: MonadIO m => Device -> Sampler -> m ()
 destroySampler = flip flip Nothing . Vulkan.destroySampler
 
-acquireTextureSampler :: MonadIO m => PhysicalDevice -> Device -> m (Cleaner, Sampler)
-acquireTextureSampler phys device = acquire (createTextureSampler phys device) (destroySampler device)
+acquireTextureSampler :: MonadCleaner m => PhysicalDevice -> Device -> m Sampler
+acquireTextureSampler phys device = acquireT (createTextureSampler phys device) (destroySampler device)

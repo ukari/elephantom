@@ -13,7 +13,7 @@ import Vulkan.Zero
 
 import Control.Monad.IO.Class (MonadIO)
 
-import Acquire (acquire, Cleaner)
+import Acquire (MonadCleaner, acquireT)
 
 createImageView :: MonadIO m => Device -> Format -> Image -> m ImageView
 createImageView device format img = Vulkan.createImageView device zero
@@ -38,5 +38,5 @@ createImageView device format img = Vulkan.createImageView device zero
 destroyImageView :: MonadIO m => Device -> ImageView -> m ()
 destroyImageView = flip flip Nothing . Vulkan.destroyImageView
 
-acquireImageView :: MonadIO m =>  Device -> Format -> Image -> m (Cleaner, ImageView)
-acquireImageView device format img = acquire (createImageView device format img) (destroyImageView device)
+acquireImageView :: MonadCleaner m =>  Device -> Format -> Image -> m ImageView
+acquireImageView device format img = acquireT (createImageView device format img) (destroyImageView device)
