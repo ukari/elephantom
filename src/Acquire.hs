@@ -1,18 +1,7 @@
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MonoLocalBinds #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE QuantifiedConstraints #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FunctionalDependencies #-}
-
-{-# LANGUAGE InstanceSigs        #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TupleSections #-}
 
 module Acquire
   ( Acquire
@@ -26,15 +15,14 @@ module Acquire
 
 import Prelude hiding (reverse)
 
-import Data.Bifunctor (bimap, first, second)
+import Data.Bifunctor (bimap, second)
 import Data.Sequence (Seq (..), (><), singleton, reverse)
 
-import Control.Applicative (liftA2)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 -- import Control.Carrier.Writer.Strict (runWriter)
 -- import Control.Effect.Writer (Has, Writer (..), tell)
 import Control.Monad.Trans.Class (MonadTrans (..))
-import Control.Monad.IO.Unlift --(MonadUnliftIO (..))
+import Control.Monad.IO.Unlift (MonadUnliftIO (..))
 
 data Acquire a = Acquire (IO a) (a -> IO ())
 
@@ -104,16 +92,12 @@ runCleanerT' :: MonadIO m => CleanerT' m a -> m a
 runCleanerT' ct = unCleanerT' ct $ \(cleaner, res) -> do
   liftIO $ cleanup cleaner
   pure res
-  -- let (cio, resio) = bimap cleanup pure $ unCleanerT' ct
-  -- _ <- cio
-  -- resio
 
 runCleanerT :: CleanerT a -> IO a
 runCleanerT ct = do
   let (cio, resio) = bimap cleanup pure $ unCleanerT ct
   _ <- cio
   resio
-
 
 foo2 :: CleanerT Int
 foo2 = do
@@ -135,24 +119,20 @@ class MonadIO m => MonadCleaner' m where
   liftCleanerT' :: CleanerT' IO a -> m a
 
 collect' :: (MonadUnliftIO m) => CleanerT' m a -> m (Cleaner, a)
---collect' ma = unCleanerT' ma $ \(cleaner, a) -> pure (cleaner, a)
 collect' ma = unCleanerT' ma $ \(cleaner, a) -> withRunInIO $ \run -> 
-  ( (run (pure (cleaner, a))))
+  run (pure (cleaner, a))
 
 instance MonadCleaner CleanerT where
   liftCleanerT = id
 
 instance MonadCleaner' (CleanerT' IO) where
-  liftCleanerT' ioa = CleanerT' $ \r -> do
-    unCleanerT' ioa $ \(cleaner, a) -> r (cleaner, a) 
-    -- liftIO $ unCleanerT' ioa $ \(cleaner, a) -> do
-    -- _ $ r (cleaner, a)
+  liftCleanerT' ioa = CleanerT' $ unCleanerT' ioa
 
 register :: (MonadCleaner m) => Cleaner -> m ()
 register cleaner = liftCleanerT $ CleanerT (cleaner, mempty)
 
 register' :: (MonadCleaner' m) => Cleaner -> m ()
-register' cleaner = liftCleanerT' $ CleanerT' $ \r -> r (cleaner, ())
+register' cleaner = liftCleanerT' $ CleanerT' ($ (cleaner, ()))
 
 cleaner1 = mkCleaner (print "fu")
 cleaner2 = mkCleaner (print "ano")
