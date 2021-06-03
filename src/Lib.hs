@@ -135,7 +135,7 @@ import qualified SpirV
 import Elephantom.Renderer
 import qualified Elephantom.Renderer as Lib
 import Elephantom.Application (Application (..), defaultApplication)
-import Acquire (Acquire, Cleaner, mkAcquire, acquire, cleanup)
+import Acquire (Acquire, Cleaner, MonadCleaner, mkAcquire, acquire, cleanup, collect)
 
 testRelease :: IO ()
 testRelease = runResourceT $ do
@@ -306,7 +306,7 @@ someFunc = runResourceT $ do
   (textureShaderRes, textureShaderModules) <- Lib.withTextureShaderStages device
   texturePipelineRes <- snd <$> allocate (Lib.createPipelineResource device renderPass textureShaderRes) (destroyPipelineResource device)
   mapM_ (Lib.destroyShaderModule device) textureShaderModules
-  (textureCleaner, texturePresent) <- loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
+  (textureCleaner, texturePresent) <- liftIO . collect $ loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   Lib.destroyShaderResource device textureShaderRes
   -- resource load end
   
@@ -397,7 +397,7 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
     , pipelineResource = pipelineRes
     }
 
-loadTexture :: MonadIO m => Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource -> ShaderResource -> PipelineResource -> m (Cleaner, Present)
+loadTexture :: (MonadIO m, MonadCleaner m) => Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource -> ShaderResource -> PipelineResource -> m Present
 loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes pipelineRes = do
   liftIO . print . descriptorSetLayouts $ textureShaderRes
   (textureSamplerCleaner, textureSampler) <- Lib.acquireTextureSampler phys device
@@ -537,13 +537,13 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
       }
     ] []
   -- let cleaner = foldMap mkCleaner [ textureSamplerCleaner, ]
-  pure (undefined, Present
+  pure Present
     { vertexBuffers = [ texCoordsBuffer ]
     , indexBuffer = texIndexBuffer
     , descriptorSets = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)
     , drawSize = fromIntegral . VS.length $ texIndices
     , pipelineResource = pipelineRes
-    })
+    }
 
 withShaderStages :: MonadIO m => Device -> m (ShaderResource, V.Vector ShaderModule)
 withShaderStages device = do
