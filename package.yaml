@@ -66,6 +66,7 @@ library:
   - fused-effects
   - fused-effects-exceptions
   - transformers
+  - unliftio
   - monad-logger
   - derive-storable
   - offset
