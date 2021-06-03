@@ -28,6 +28,7 @@ dependencies:
 library:
   source-dirs: src
   dependencies:
+  - relude
   - template-haskell
   - kazura-queue
   - streamly

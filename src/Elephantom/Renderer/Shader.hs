@@ -14,6 +14,7 @@ import Vulkan hiding (createShaderModule, destroyShaderModule, createDescriptorS
 import qualified Vulkan
 import Vulkan.CStruct.Extends
 
+import Relude.Extra.Tuple (fmapToFst)
 import Data.Bifunctor (first)
 import qualified Data.Vector as V
 import Data.ByteString.Char8 (ByteString)
@@ -45,7 +46,7 @@ createShaderResource device spirvs = do
   -- the reflection should be done in compile stage
   reflects <- V.mapM SpirV.reflection' spirvs
   let shaderInfos = SpirV.makeShaderInfo <$> reflects
-  (shaderStages, shaderModules) <- first join . V.unzip <$> mapM (liftA2 consfmap SpirV.pipelineShaderStageCreateInfos (createShaderModule device)) shaderInfos
+  (shaderStages, shaderModules) <- first join . V.unzip <$> mapM (liftA2 fmapToFst SpirV.pipelineShaderStageCreateInfos (createShaderModule device)) shaderInfos
   let descriptorSetLayoutCreateInfos = SpirV.makeDescriptorInfo reflects
   descriptorSetLayouts <- mapM (createDescriptorSetLayout device) descriptorSetLayoutCreateInfos
   let vertexInputState = SpirV.makeInputInfo reflects
@@ -53,8 +54,3 @@ createShaderResource device spirvs = do
 
 destroyShaderResource :: MonadIO m => Device -> ShaderResource -> m ()
 destroyShaderResource device ShaderResource {..} = mapM_ (destroyDescriptorSetLayout device) descriptorSetLayouts
-
-consfmap :: (Monad f, Functor f) => (a -> b) -> f a -> f (b, a)
-consfmap f fa = do
-  a <- fa
-  pure (f a, a)
