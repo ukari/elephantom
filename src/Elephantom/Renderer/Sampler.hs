@@ -3,14 +3,18 @@
 
 module Elephantom.Renderer.Sampler
   ( createTextureSampler
+  , acquireTextureSampler
   ) where
 
-import Vulkan
+import Vulkan hiding (destroySampler)
+import qualified Vulkan
 import Vulkan.Zero
 
 import Data.Bool (bool)
 
 import Control.Monad.IO.Class (MonadIO)
+
+import Acquire (Cleaner, acquire)
 
 createTextureSampler :: MonadIO m => PhysicalDevice -> Device -> m Sampler
 createTextureSampler phys device = do
@@ -33,3 +37,10 @@ createTextureSampler phys device = do
     , minLod = 0
     , maxLod = 0
     } Nothing
+
+{-# INLINE destroySampler #-}
+destroySampler :: MonadIO m => Device -> Sampler -> m ()
+destroySampler = flip flip Nothing . Vulkan.destroySampler
+
+acquireTextureSampler :: MonadIO m => PhysicalDevice -> Device -> m (Cleaner, Sampler)
+acquireTextureSampler phys device = acquire (createTextureSampler phys device) (destroySampler device)

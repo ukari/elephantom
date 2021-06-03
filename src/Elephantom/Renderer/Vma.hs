@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
@@ -8,10 +9,13 @@ module Elephantom.Renderer.Vma
   ( withAllocator
   , memCopy
   , memCopyU
+  , acquireBuffer
+  , acquireImage
   ) where
 
-import Vulkan
+import Vulkan hiding (destroyBuffer, destroyImage)
 import Vulkan.Zero
+import Vulkan.CStruct.Extends
 import qualified VulkanMemoryAllocator as Vma
 
 import Foreign.Ptr (castPtr)
@@ -24,6 +28,7 @@ import Control.Monad.Trans.Resource (MonadResource, allocate)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import Elephantom.Renderer.ApplicationInfo (appInfo)
+import Acquire (acquire, Cleaner)
 
 withAllocator :: MonadResource m => PhysicalDevice -> Device -> Instance -> m Vma.Allocator
 withAllocator phys device inst = snd <$> Vma.withAllocator zero
@@ -47,3 +52,15 @@ memCopyU allocator memAllocation datas = do
   liftIO $ with datas $ \ptr ->
     copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral . sizeOf $ (undefined :: a)
   Vma.unmapMemory allocator memAllocation
+
+acquireBuffer :: (Extendss BufferCreateInfo a, PokeChain a, MonadIO m) => Vma.Allocator -> BufferCreateInfo a -> Vma.AllocationCreateInfo -> m (Cleaner, (Buffer, Vma.Allocation, Vma.AllocationInfo))
+acquireBuffer allocator bufferCreateInfo allocationCreateInfo = acquire (Vma.createBuffer allocator bufferCreateInfo allocationCreateInfo) destroyBuffer
+  where
+    destroyBuffer :: MonadIO m => (Buffer, Vma.Allocation, Vma.AllocationInfo) -> m ()
+    destroyBuffer (buffer, allocation, _) = Vma.destroyBuffer allocator buffer allocation
+
+acquireImage :: (Extendss ImageCreateInfo a, PokeChain a, MonadIO m) => Vma.Allocator -> ImageCreateInfo a -> Vma.AllocationCreateInfo -> m (Cleaner, (Image, Vma.Allocation, Vma.AllocationInfo))
+acquireImage allocator imageCreateInfo allocationCreateInfo = acquire (Vma.createImage allocator imageCreateInfo allocationCreateInfo) destroyImage
+  where
+    destroyImage :: MonadIO m => (Image, Vma.Allocation, Vma.AllocationInfo) -> m ()
+    destroyImage (image, allocation, _) = Vma.destroyImage allocator image allocation

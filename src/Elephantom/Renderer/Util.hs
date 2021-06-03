@@ -50,7 +50,7 @@ tryWithEM ex value = runExceptT (failWith ex value) >>= \case
     Right x -> pure x
     Left e -> throw e
 
-{-# inline tryWith #-}
+{-# INLINE tryWith #-}
 tryWith :: a -> Maybe a -> a
 tryWith = fromMaybe
 

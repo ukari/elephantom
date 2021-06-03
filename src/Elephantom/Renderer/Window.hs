@@ -25,7 +25,7 @@ createWindow title width height = do
   SDL.windowMinimumSize window SDL.$= SDL.V2 (fromIntegral width) (fromIntegral height)
   pure window
 
-{-# inline destroyWindow #-}
+{-# INLINE destroyWindow #-}
 destroyWindow :: MonadIO m => SDL.Window -> m ()
 destroyWindow = SDL.destroyWindow
 

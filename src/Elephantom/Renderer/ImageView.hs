@@ -4,6 +4,7 @@
 module Elephantom.Renderer.ImageView
   ( createImageView
   , destroyImageView
+  , acquireImageView
   ) where
 
 import Vulkan hiding (createImageView, destroyImageView)
@@ -11,6 +12,8 @@ import qualified Vulkan
 import Vulkan.Zero
 
 import Control.Monad.IO.Class (MonadIO)
+
+import Acquire (acquire, Cleaner)
 
 createImageView :: MonadIO m => Device -> Format -> Image -> m ImageView
 createImageView device format img = Vulkan.createImageView device zero
@@ -34,3 +37,6 @@ createImageView device format img = Vulkan.createImageView device zero
 
 destroyImageView :: MonadIO m => Device -> ImageView -> m ()
 destroyImageView = flip flip Nothing . Vulkan.destroyImageView
+
+acquireImageView :: MonadIO m =>  Device -> Format -> Image -> m (Cleaner, ImageView)
+acquireImageView device format img = acquire (createImageView device format img) (destroyImageView device)

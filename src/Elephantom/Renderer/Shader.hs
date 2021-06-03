@@ -10,7 +10,7 @@ module Elephantom.Renderer.Shader
   , destroyShaderResource
   ) where
 
-import Vulkan hiding (createShaderModule, destroyShaderModule, createDescriptorSetLayout)
+import Vulkan hiding (createShaderModule, destroyShaderModule, createDescriptorSetLayout, destroyDescriptorSetLayout)
 import qualified Vulkan
 import Vulkan.CStruct.Extends
 
@@ -22,7 +22,7 @@ import Control.Applicative (liftA2)
 import Control.Monad (join)
 import Control.Monad.IO.Class (MonadIO)
 
-import Elephantom.Renderer.Descriptor (createDescriptorSetLayout)
+import Elephantom.Renderer.Descriptor (createDescriptorSetLayout, destroyDescriptorSetLayout)
 import SpirV
 
 data ShaderResource = ShaderResource
@@ -52,7 +52,7 @@ createShaderResource device spirvs = do
   pure (ShaderResource {..}, shaderModules)
 
 destroyShaderResource :: MonadIO m => Device -> ShaderResource -> m ()
-destroyShaderResource device ShaderResource {..} = mapM_ (flip flip Nothing $ destroyDescriptorSetLayout device) descriptorSetLayouts
+destroyShaderResource device ShaderResource {..} = mapM_ (destroyDescriptorSetLayout device) descriptorSetLayouts
 
 consfmap :: (Monad f, Functor f) => (a -> b) -> f a -> f (b, a)
 consfmap f fa = combine (f <$> fa) fa

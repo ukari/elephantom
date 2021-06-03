@@ -8,6 +8,7 @@ module Elephantom.Renderer.Descriptor
   , destroyDescriptorSetLayout
   , createDescriptorSetResource
   , destroyDescriptorSetResource
+  , acquireDescriptorSetResource
   ) where
 
 import Vulkan hiding (createDescriptorSetLayout, destroyDescriptorSetLayout)
@@ -22,14 +23,18 @@ import Data.Function (on)
 import Control.Applicative (liftA2)
 import Control.Monad.IO.Class (MonadIO)
 
+import Acquire (Cleaner, acquire)
+
 data DescriptorSetResource = DescriptorSetResource
   { descriptorPool :: !DescriptorPool
   , descriptorSets :: !(V.Vector DescriptorSet)
   } deriving (Show)
 
+{-# INLINE createDescriptorSetLayout #-}
 createDescriptorSetLayout :: MonadIO m => Device -> DescriptorSetLayoutCreateInfo '[] -> m DescriptorSetLayout
 createDescriptorSetLayout = flip flip Nothing . Vulkan.createDescriptorSetLayout
 
+{-# INLINE destroyDescriptorSetLayout #-}
 destroyDescriptorSetLayout :: MonadIO m => Device -> DescriptorSetLayout -> m ()
 destroyDescriptorSetLayout = flip flip Nothing . Vulkan.destroyDescriptorSetLayout
 
@@ -50,6 +55,9 @@ destroyDescriptorSetResource :: MonadIO m => Device -> DescriptorSetResource -> 
 destroyDescriptorSetResource device DescriptorSetResource {..} = do
   freeDescriptorSets device descriptorPool descriptorSets
   destroyDescriptorPool device descriptorPool Nothing
+
+acquireDescriptorSetResource :: MonadIO m => Device -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> m (Cleaner, DescriptorSetResource)
+acquireDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos = acquire (createDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos) (destroyDescriptorSetResource device)
 
 makeDescriptorPoolCreateInfo :: Word32 -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> DescriptorPoolCreateInfo '[]
 makeDescriptorPoolCreateInfo maxSets infos = zero
