@@ -1,16 +1,21 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedLists #-}
 
 module Elephantom.Renderer.RenderPass
   ( createRenderPass
   , destroyRenderPass
+  , withRenderPass
   ) where
 
-import Vulkan hiding (createRenderPass, destroyRenderPass)
+import Vulkan hiding (createRenderPass, destroyRenderPass, withRenderPass)
 import qualified Vulkan
 import Vulkan.Zero
+
 import Control.Monad.IO.Class (MonadIO)
+
+import Elephantom.Renderer.Allocator (Allocator)
 
 createRenderPass :: MonadIO m => Device -> SurfaceFormatKHR -> m RenderPass
 createRenderPass device surfFormat = do
@@ -39,3 +44,6 @@ createRenderPass device surfFormat = do
 
 destroyRenderPass :: MonadIO m => Device -> RenderPass -> m ()
 destroyRenderPass = flip flip Nothing . Vulkan.destroyRenderPass
+
+withRenderPass :: MonadIO m => Device -> SurfaceFormatKHR -> Allocator m RenderPass
+withRenderPass device surfFormat allocate = allocate (createRenderPass device surfFormat) (destroyRenderPass device)

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0e1d2fe28aec5cee4d828c04a2003e6193f1e9c3c62332a945599e1fda2db04a
+-- hash: f42ffab0e500c701962dd4e96fb8bd1892740d8442a53a2ce29c31d567b10608
 
 name:           elephantom
 version:        0.1.0.0
@@ -30,6 +30,7 @@ library
       Acquire
       Elephantom.Application
       Elephantom.Renderer
+      Elephantom.Renderer.Allocator
       Elephantom.Renderer.ApplicationInfo
       Elephantom.Renderer.Command
       Elephantom.Renderer.CommandBuffer

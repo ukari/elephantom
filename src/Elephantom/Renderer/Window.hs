@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Elephantom.Renderer.Window
   ( createWindow
   , destroyWindow
@@ -9,7 +11,8 @@ import qualified SDL
 import Data.Text (Text)
 
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Trans.Resource (MonadResource, allocate)
+
+import Elephantom.Renderer.Allocator (Allocator)
 
 createWindow :: MonadIO m => Text -> Int -> Int -> m SDL.Window
 createWindow title width height = do
@@ -29,8 +32,6 @@ createWindow title width height = do
 destroyWindow :: MonadIO m => SDL.Window -> m ()
 destroyWindow = SDL.destroyWindow
 
-withWindow :: MonadResource m => Text -> Int -> Int -> m SDL.Window
-withWindow title width height = do
-  (_key, window) <- allocate (createWindow title width height) destroyWindow
-  pure window
+withWindow :: MonadIO m => Text -> Int -> Int -> Allocator m SDL.Window
+withWindow title width height allocate = allocate (createWindow title width height) destroyWindow
 

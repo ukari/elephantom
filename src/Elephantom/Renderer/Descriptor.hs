@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 
 module Elephantom.Renderer.Descriptor
@@ -8,7 +9,7 @@ module Elephantom.Renderer.Descriptor
   , destroyDescriptorSetLayout
   , createDescriptorSetResource
   , destroyDescriptorSetResource
-  , acquireDescriptorSetResource
+  , withDescriptorSetResource
   ) where
 
 import Vulkan hiding (createDescriptorSetLayout, destroyDescriptorSetLayout)
@@ -23,7 +24,7 @@ import Data.Function (on)
 import Control.Applicative (liftA2)
 import Control.Monad.IO.Class (MonadIO)
 
-import Acquire (MonadCleaner, acquireT)
+import Elephantom.Renderer.Allocator (Allocator)
 
 data DescriptorSetResource = DescriptorSetResource
   { descriptorPool :: !DescriptorPool
@@ -56,8 +57,8 @@ destroyDescriptorSetResource device DescriptorSetResource {..} = do
   freeDescriptorSets device descriptorPool descriptorSets
   destroyDescriptorPool device descriptorPool Nothing
 
-acquireDescriptorSetResource :: MonadCleaner m => Device -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> m DescriptorSetResource
-acquireDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos = acquireT (createDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos) (destroyDescriptorSetResource device)
+withDescriptorSetResource :: MonadIO m => Device -> V.Vector DescriptorSetLayout -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> Allocator m DescriptorSetResource
+withDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos allocate = allocate (createDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreateInfos) (destroyDescriptorSetResource device)
 
 makeDescriptorPoolCreateInfo :: Word32 -> V.Vector (DescriptorSetLayoutCreateInfo '[]) -> DescriptorPoolCreateInfo '[]
 makeDescriptorPoolCreateInfo maxSets infos = zero

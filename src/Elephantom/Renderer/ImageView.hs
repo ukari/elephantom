@@ -1,19 +1,20 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Elephantom.Renderer.ImageView
   ( createImageView
   , destroyImageView
-  , acquireImageView
+  , withImageView
   ) where
 
-import Vulkan hiding (createImageView, destroyImageView)
+import Vulkan hiding (createImageView, destroyImageView, withImageView)
 import qualified Vulkan
 import Vulkan.Zero
 
 import Control.Monad.IO.Class (MonadIO)
 
-import Acquire (MonadCleaner, acquireT)
+import Elephantom.Renderer.Allocator (Allocator)
 
 createImageView :: MonadIO m => Device -> Format -> Image -> m ImageView
 createImageView device format img = Vulkan.createImageView device zero
@@ -38,5 +39,5 @@ createImageView device format img = Vulkan.createImageView device zero
 destroyImageView :: MonadIO m => Device -> ImageView -> m ()
 destroyImageView = flip flip Nothing . Vulkan.destroyImageView
 
-acquireImageView :: MonadCleaner m =>  Device -> Format -> Image -> m ImageView
-acquireImageView device format img = acquireT (createImageView device format img) (destroyImageView device)
+withImageView :: MonadIO m => Device -> Format -> Image -> Allocator m ImageView
+withImageView device format img allocate = allocate (createImageView device format img) (destroyImageView device)

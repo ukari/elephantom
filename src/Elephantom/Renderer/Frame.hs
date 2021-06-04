@@ -30,7 +30,7 @@ import qualified Data.Vector as V
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Concurrent (MVar, readMVar, swapMVar)
-import Control.Exception (AsyncException (..), SomeAsyncException (..), throw)
+import Control.Exception (throw)
 import qualified Control.Exception as Ex
 
 import Elephantom.Application (Application)

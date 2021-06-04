@@ -1,11 +1,13 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedLists #-}
 
 module Elephantom.Renderer.Pipeline
   ( PipelineResource (..)
   , createPipelineResource
   , destroyPipelineResource
+  , withPipelineResource
   ) where
 
 import Vulkan
@@ -17,7 +19,8 @@ import Data.Vector ((!))
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
-import Elephantom.Renderer.Shader
+import Elephantom.Renderer.Allocator (Allocator)
+import Elephantom.Renderer.Shader (ShaderResource (..))
 
 data PipelineResource = PipelineResource
   { pipeline :: !Pipeline
@@ -89,3 +92,6 @@ destroyPipelineResource :: MonadIO m => Device -> PipelineResource -> m ()
 destroyPipelineResource device PipelineResource {..} = do
   Vulkan.destroyPipeline device pipeline Nothing
   Vulkan.destroyPipelineLayout device pipelineLayout Nothing
+
+withPipelineResource :: MonadIO m => Device -> RenderPass -> ShaderResource -> Allocator m PipelineResource
+withPipelineResource device renderPass shaderResource allocate = allocate (createPipelineResource device renderPass shaderResource) (destroyPipelineResource device)

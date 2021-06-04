@@ -1,9 +1,10 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Elephantom.Renderer.Sampler
   ( createTextureSampler
-  , acquireTextureSampler
+  , withTextureSampler
   ) where
 
 import Vulkan hiding (destroySampler)
@@ -14,7 +15,7 @@ import Data.Bool (bool)
 
 import Control.Monad.IO.Class (MonadIO)
 
-import Acquire (MonadCleaner, acquireT)
+import Elephantom.Renderer.Allocator (Allocator)
 
 createTextureSampler :: MonadIO m => PhysicalDevice -> Device -> m Sampler
 createTextureSampler phys device = do
@@ -42,5 +43,5 @@ createTextureSampler phys device = do
 destroySampler :: MonadIO m => Device -> Sampler -> m ()
 destroySampler = flip flip Nothing . Vulkan.destroySampler
 
-acquireTextureSampler :: MonadCleaner m => PhysicalDevice -> Device -> m Sampler
-acquireTextureSampler phys device = acquireT (createTextureSampler phys device) (destroySampler device)
+withTextureSampler :: MonadIO m => PhysicalDevice -> Device -> Allocator m Sampler
+withTextureSampler phys device allocate = allocate (createTextureSampler phys device) (destroySampler device)

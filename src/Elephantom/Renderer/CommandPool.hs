@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Elephantom.Renderer.CommandPool
   ( CommandPoolResource (..)
@@ -14,8 +15,8 @@ import Vulkan.Zero
 import Data.Bits ((.|.))
 
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Trans.Resource (MonadResource, allocate)
 
+import Elephantom.Renderer.Allocator (Allocator)
 import Elephantom.Renderer.QueueFamily (QueueFamilyIndices (..))
 
 data CommandPoolResource = CommandPoolResource
@@ -42,5 +43,5 @@ destroyCommandPoolResource device CommandPoolResource {..} = do
   destroyCommandPool device graphicsCommandPool Nothing
   destroyCommandPool device transferCommandPool Nothing
 
-withCommandPoolResource :: MonadResource m => Device  -> QueueFamilyIndices -> m CommandPoolResource
-withCommandPoolResource device queueFamilyIndices = snd <$> allocate (createCommandPoolResource device queueFamilyIndices) (destroyCommandPoolResource device)
+withCommandPoolResource :: MonadIO m => Device -> QueueFamilyIndices -> Allocator m CommandPoolResource
+withCommandPoolResource device queueFamilyIndices allocate = allocate (createCommandPoolResource device queueFamilyIndices) (destroyCommandPoolResource device)
