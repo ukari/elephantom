@@ -266,7 +266,7 @@ rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  let application@Application {..} = defaultApplication
+  let application@Application {..} = defaultApplication { width = 640, height = 480 } :: Application
 
   eventQueue <- liftIO newQueue
   withSDL
@@ -305,13 +305,13 @@ someFunc = runResourceT $ do
   liftIO . print $ shaderModules
   pipelineRes <- snd <$> Lib.withPipelineResource device renderPass shaderRes allocate
   mapM_ (Lib.destroyShaderModule device) shaderModules
-  (triangleCleaner, trianglePresent) <- liftIO . collect $ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes
+  (triangleCleaner, trianglePresent) <- liftIO . collect $ loadTriangle application allocator device queueFamilyIndices shaderRes pipelineRes
   Lib.destroyShaderResource device shaderRes
   (textureShaderRes, textureShaderModules) <- Lib.withTextureShaderStages device
   texturePipelineRes <- snd <$> Lib.withPipelineResource device renderPass textureShaderRes allocate
   liftIO . print $ textureShaderModules
   mapM_ (Lib.destroyShaderModule device) textureShaderModules
-  (textureCleaner, texturePresent) <- liftIO . collect $ loadTexture allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
+  (textureCleaner, texturePresent) <- liftIO . collect $ loadTexture application allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   Lib.destroyShaderResource device textureShaderRes
   -- resource load end
   
@@ -329,9 +329,9 @@ someFunc = runResourceT $ do
 
   liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
 
-loadTriangle :: MonadCleaner m => Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
-loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
-  
+loadTriangle :: MonadCleaner m => Application -> Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
+loadTriangle Application { width, height } allocator device queueFamilyIndices shaderRes pipelineRes = do
+
   (vertexBuffer, vertexBufferAllocation, _) <- Lib.withBuffer allocator zero
     { size = fromIntegral $ 3 * sizeOf (undefined :: ShaderInputVertex)
     , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT -- support vkCmdBindVertexBuffers.pBuffers
@@ -367,7 +367,7 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
     } acquireT
   let uniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
-        , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
+        , proj = transpose $ ortho (0) (fromIntegral width) (0) (fromIntegral height) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
         }
   memCopyU allocator uniformBufferAllocation uniform -- early free
@@ -402,8 +402,8 @@ loadTriangle allocator device queueFamilyIndices shaderRes pipelineRes = do
     , pipelineResource = pipelineRes
     }
 
-loadTexture :: (MonadIO m, MonadCleaner m) => Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource -> ShaderResource -> PipelineResource -> m Present
-loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes pipelineRes = do
+loadTexture :: (MonadIO m, MonadCleaner m) => Application -> Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource -> ShaderResource -> PipelineResource -> m Present
+loadTexture Application { width, height } allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes pipelineRes = do
   liftIO . print . descriptorSetLayouts $ textureShaderRes
   textureSampler <- Lib.withTextureSampler phys device acquireT
   textureDescriptorSetResource <- Lib.withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes) acquireT
@@ -434,8 +434,8 @@ loadTexture allocator phys device queueFamilyIndices QueueResource {..} CommandP
   
   let texUniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
-        , proj = transpose $ ortho (0) (500) (0) (500) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
-        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (150/2*1) (100/2*1) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
+        , proj = transpose $ ortho (0) (fromIntegral width) (0) (fromIntegral height) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
+        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (150/2*1) (100/2*1) 0) (axisAngle (V3 0 0 1) ((45+30)/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
         }
   (texUniformBuffer, texUniformBufferAllocation, _) <- Lib.withBuffer allocator zero
     { size = fromIntegral $ 4 * sizeOf (undefined :: ShaderUniform)
