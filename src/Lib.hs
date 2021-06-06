@@ -541,7 +541,6 @@ loadTexture Application { width, height } allocator phys device queueFamilyIndic
         ]
       }
     ] []
-  -- let cleaner = foldMap mkCleaner [ textureSamplerCleaner, ]
   pure Present
     { vertexBuffers = [ texCoordsBuffer ]
     , indexBuffer = texIndexBuffer

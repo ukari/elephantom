@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b174a0994e43abddd89e150e2e6f1d481bb63f7116716ab7383660bea0a72b04
+-- hash: 3536f4f2a92f899ce79c86b86448a02b120fb751f4e337b24aaa021e50bcbb2b
 
 name:           elephantom
 version:        0.1.0.0
@@ -103,6 +103,7 @@ library
     , Rasterific
     , StateVar
     , VulkanMemoryAllocator
+    , ad
     , aeson
     , base >=4.7 && <5
     , bytestring

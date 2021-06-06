@@ -58,6 +58,7 @@ library:
   - resourcet
   - lifetimes
   - unliftio-core
+  - ad
   - repa
   - JuicyPixels-repa
   - JuicyPixels
