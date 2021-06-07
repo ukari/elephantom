@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3536f4f2a92f899ce79c86b86448a02b120fb751f4e337b24aaa021e50bcbb2b
+-- hash: d26ea615e6c6c37d3e8cbc277971b039a1786f91e59667d757715ec2ae98b497
 
 name:           elephantom
 version:        0.1.0.0
@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:
       Acquire
+      Conv
       Elephantom.Application
       Elephantom.Graphics.Rectangle
       Elephantom.Graphics.Text
@@ -128,6 +129,7 @@ library
     , reflex
     , relude
     , repa
+    , repa-io
     , resourcet
     , sdl2
     , streamly

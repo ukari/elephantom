@@ -60,6 +60,7 @@ library:
   - unliftio-core
   - ad
   - repa
+  - repa-io
   - JuicyPixels-repa
   - JuicyPixels
   - FontyFruity
