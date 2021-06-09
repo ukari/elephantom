@@ -59,8 +59,8 @@ library:
   - lifetimes
   - unliftio-core
   - ad
-  - massiv
-  - massiv-io
+  - massiv >= 0.6.1.0
+  - massiv-io >= 0.4.1.0
   - JuicyPixels
   - FontyFruity
   - Rasterific

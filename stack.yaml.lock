@@ -104,33 +104,33 @@ packages:
   original:
     hackage: witherable-0.3.5@sha256:6590a15735b50ac14dcc138d4265ff1585d5f3e9d3047d5ebc5abf4cd5f50084,1476
 - completed:
-    hackage: repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
+    hackage: massiv-0.6.1.0@sha256:6801607ca10a9cb8caad7383164bfa3212be7edc87d918d17f713d2efafcf629,4664
     pantry-tree:
-      size: 2965
-      sha256: 9df7e22a32219da108ee67a24a9a223973357ce40d2d920d3df994c46e98f77e
+      size: 3990
+      sha256: 26aa8dcdd8bc05cb86057eebeacfcceef96d2c17b472be8f8ca5c4d4c06be6a3
   original:
-    hackage: repa-3.4.1.4@sha256:fab455d72a702f2d8a0c9be2de1d45ea1beb8f5949d8173bb95d2e7c515a6225,3323
+    hackage: massiv-0.6.1.0@sha256:6801607ca10a9cb8caad7383164bfa3212be7edc87d918d17f713d2efafcf629,4664
 - completed:
-    hackage: repa-io-3.4.1.1@sha256:083d8d66559c77078a50ed94130969a784489d944818ddd5bc000e1584fa2bed,1274
+    hackage: scheduler-1.5.0@sha256:8b43f2991bf9a720b12192ba99525f705a44aeae9541a7bd73fbc7e7b56fd8f0,2437
     pantry-tree:
-      size: 570
-      sha256: 685ec8ceae9683e2d451b5b40b1038ee111796eb47d20824c20a02d1571eeeec
+      size: 921
+      sha256: 18de6354961aab66e7aafb6b7a21edfa2239cd202a61338468ebe0840b826e04
   original:
-    hackage: repa-io-3.4.1.1@sha256:083d8d66559c77078a50ed94130969a784489d944818ddd5bc000e1584fa2bed,1274
+    hackage: scheduler-1.5.0@sha256:8b43f2991bf9a720b12192ba99525f705a44aeae9541a7bd73fbc7e7b56fd8f0,2437
 - completed:
-    hackage: repa-algorithms-3.4.1.3@sha256:d549d0d0d9534be7e89b1e995d1eaaf8cb97a450c033b4424d8ae192ac0e6b53,1955
+    hackage: massiv-io-0.4.1.0@sha256:fd1db3d851e0343833b8b3b6526be0f05782ee1f2152788616d71108d3b9676f,3667
     pantry-tree:
-      size: 938
-      sha256: 48f85b02ef4ff33c690f1d78b2ce86685f8112e70ef7500e01adae2a1097c1aa
+      size: 1966
+      sha256: 9b51c9c7db097c66fd7db1952a68e58fc4a939eb4d6025791b40f25c2cb567b8
   original:
-    hackage: repa-algorithms-3.4.1.3@sha256:d549d0d0d9534be7e89b1e995d1eaaf8cb97a450c033b4424d8ae192ac0e6b53,1955
+    hackage: massiv-io-0.4.1.0@sha256:fd1db3d851e0343833b8b3b6526be0f05782ee1f2152788616d71108d3b9676f,3667
 - completed:
-    hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
+    hackage: Color-0.3.2@sha256:268a28d4864e904c3e6693c08b1fb9880271c953b114d0a483a0f9a81ef09577,8468
     pantry-tree:
-      size: 222
-      sha256: 951d640678453f8e41fa6aac78eed1fea260d71152abfcd1b7e8c2fe936d2581
+      size: 7627
+      sha256: a0e3d0b96c6583e4ccc04353612945c4cea3373684c0b7d4db49ea57e9b30162
   original:
-    hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
+    hackage: Color-0.3.2@sha256:268a28d4864e904c3e6693c08b1fb9880271c953b114d0a483a0f9a81ef09577,8468
 - completed:
     hackage: derive-storable-0.3.0.0@sha256:819332e8dd666ec88dab17e3aca0cffced197c1a560f5a003789a9372e7f07f1,2299
     pantry-tree:
