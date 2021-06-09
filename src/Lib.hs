@@ -61,7 +61,6 @@ import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
 import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), Epsilon, transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, m33_to_m44, scaled)
 import qualified Linear
 --import Data.Acquire (Acquire, mkAcquire)
-import qualified Data.Array.Repa as Repa
 import Data.String (IsString)
 import Data.Word (Word32)
 import Data.Text (Text)

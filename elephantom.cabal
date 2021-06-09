@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ae47e72693ceeaa55d9c9ff6a4748a838b641720d24b3628cdbf3079d9e5d48b
+-- hash: afb5422cd0a4d9212d92a94bdac3bff4ce692c8b13d8f929b26e6bf230e9e8d6
 
 name:           elephantom
 version:        0.1.0.0
@@ -100,7 +100,6 @@ library
       Cabal
     , FontyFruity
     , JuicyPixels
-    , JuicyPixels-repa
     , Rasterific
     , StateVar
     , VulkanMemoryAllocator
@@ -130,9 +129,6 @@ library
     , recursion-schemes
     , reflex
     , relude
-    , repa
-    , repa-algorithms
-    , repa-io
     , resourcet
     , sdl2
     , streamly
