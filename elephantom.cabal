@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9779a410428d45a6fab1d296ed37b17d3c6367c1c29bdad011aafcffe6c77720
+-- hash: 7e3103929cc1651db3557b060e4e2ad942188e1cac2915dd2bc0cff6b776c366
 
 name:           elephantom
 version:        0.1.0.0
@@ -117,6 +117,7 @@ library
     , gitrev
     , hspec
     , kazura-queue
+    , lens
     , lifetimes
     , linear
     , massiv >=0.6.1.0
