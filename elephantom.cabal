@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d26ea615e6c6c37d3e8cbc277971b039a1786f91e59667d757715ec2ae98b497
+-- hash: ae47e72693ceeaa55d9c9ff6a4748a838b641720d24b3628cdbf3079d9e5d48b
 
 name:           elephantom
 version:        0.1.0.0
@@ -120,6 +120,8 @@ library
     , kazura-queue
     , lifetimes
     , linear
+    , massiv
+    , massiv-io
     , microlens-platform
     , monad-logger
     , offset
@@ -129,6 +131,7 @@ library
     , reflex
     , relude
     , repa
+    , repa-algorithms
     , repa-io
     , resourcet
     , sdl2

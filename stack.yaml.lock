@@ -118,6 +118,13 @@ packages:
   original:
     hackage: repa-io-3.4.1.1@sha256:083d8d66559c77078a50ed94130969a784489d944818ddd5bc000e1584fa2bed,1274
 - completed:
+    hackage: repa-algorithms-3.4.1.3@sha256:d549d0d0d9534be7e89b1e995d1eaaf8cb97a450c033b4424d8ae192ac0e6b53,1955
+    pantry-tree:
+      size: 938
+      sha256: 48f85b02ef4ff33c690f1d78b2ce86685f8112e70ef7500e01adae2a1097c1aa
+  original:
+    hackage: repa-algorithms-3.4.1.3@sha256:d549d0d0d9534be7e89b1e995d1eaaf8cb97a450c033b4424d8ae192ac0e6b53,1955
+- completed:
     hackage: JuicyPixels-repa-0.7.1.0@sha256:ffbebd96efbf6af83eb14ee9c89259acf5a9a7d504644f2a35577bd66406ae69,898
     pantry-tree:
       size: 222
