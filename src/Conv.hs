@@ -6,13 +6,21 @@ module Conv
   (
   ) where
 
+import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Massiv.Array hiding ((!*!))
+import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector)
 --import Data.Massiv.Array.Numeric ((!*!))
-import Linear.V
-import Linear
-import Linear.Matrix
+--import Linear.V
+--import Linear
+--import Linear.Matrix
 import Control.Lens.Setter (ASetter')
 import Numeric.AD
+import System.Random
+
+import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Generic as VG
+import Data.Bifunctor (first)
+import Control.Applicative (liftA2)
 
 test :: IO ()
 test = do
@@ -26,15 +34,6 @@ test = do
   pure $ mt1 !><! lm0
   pure ()
 
---foo = [0..5] :: V 6 Int
-lin :: IO ()
-lin = do
-  let l0 = [[0 .. 9999], [9999 .. 0::Int]] :: [[Int]]
-  let l2 = [[0 .. 9999::Int]] :: [[Int]]
-  let foo = [[1..3], [1..3], [1..3]] :: [[Int]]
-  print $ l2 !*! foo
-  pure ()
-
 test2 :: IO ()
 test2 = do
   let a0 = 1...64 :: Array D Ix1 Int
@@ -44,4 +43,19 @@ test2 = do
   let st = makeStencil (Sz (3 :. 3)) (1 :. 0) (\get -> get (0 :. 2))
   print a0
   print $ computeAs U $ (+0) <$> mapStencil Wrap st a3
+  pure ()
+
+testdot :: IO ()
+testdot = do
+  let rd = mkStdGen 2
+  let a0 = randomArray rd split (random) Seq (Sz 1000000) :: Array DL (Ix 1) Double
+  --print a0
+  let a1 = compute a0 :: Array U Ix1 Double
+  --let v0 = toVector a1 :: VU.Vector Double
+  tic <- getCurrentTime
+  v <- dotM a1 a1
+  toc <- getCurrentTime
+  print v
+  print $ diffUTCTime toc tic
+
   pure ()

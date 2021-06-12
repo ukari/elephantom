@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7e3103929cc1651db3557b060e4e2ad942188e1cac2915dd2bc0cff6b776c366
+-- hash: a14e98bd4e3a939e23c0bcf8d69e584957b6bbf66c2c5fab086656bdfa849f81
 
 name:           elephantom
 version:        0.1.0.0
@@ -127,6 +127,7 @@ library
     , offset
     , parsec
     , qm-interpolated-string
+    , random
     , recursion-schemes
     , reflex
     , relude
