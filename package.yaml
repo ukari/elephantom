@@ -61,7 +61,6 @@ library:
   - unliftio-core
   - ad
   - random
-  - hmatrix
   - massiv >= 0.6.1.0
   - massiv-io >= 0.4.1.0
   - JuicyPixels
