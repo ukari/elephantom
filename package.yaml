@@ -38,8 +38,8 @@ library:
   - dependent-sum
   - microlens-platform
   - containers
-  - linear
-  - vector
+  - linear >= 1.21.5
+  - vector >= 0.12.3.0
   - vector-algorithms
   - text
   - bytestring
@@ -61,6 +61,7 @@ library:
   - unliftio-core
   - ad
   - random
+  - hmatrix
   - massiv >= 0.6.1.0
   - massiv-io >= 0.4.1.0
   - JuicyPixels

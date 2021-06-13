@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a14e98bd4e3a939e23c0bcf8d69e584957b6bbf66c2c5fab086656bdfa849f81
+-- hash: 2bbf4b078c0c62eb1c5eb982a8662ba101efb3f8e2e47b3e0e80241393500af4
 
 name:           elephantom
 version:        0.1.0.0
@@ -115,11 +115,12 @@ library
     , fused-effects
     , fused-effects-exceptions
     , gitrev
+    , hmatrix
     , hspec
     , kazura-queue
     , lens
     , lifetimes
-    , linear
+    , linear >=1.21.5
     , massiv >=0.6.1.0
     , massiv-io >=0.4.1.0
     , microlens-platform
@@ -143,7 +144,7 @@ library
     , unliftio
     , unliftio-core
     , utf8-string
-    , vector
+    , vector >=0.12.3.0
     , vector-algorithms
     , vulkan
     , vulkan-utils
