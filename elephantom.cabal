@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2bbf4b078c0c62eb1c5eb982a8662ba101efb3f8e2e47b3e0e80241393500af4
+-- hash: 9127cec23a5d167c17536b324e5b16a57dd70955ffff5302e865b58ed8a14758
 
 name:           elephantom
 version:        0.1.0.0
@@ -87,6 +87,7 @@ library
       Language.GLSL.Preprocess
       Lib
       Listen
+      MatrixTest
       Offset
       Orphan
       Shader
