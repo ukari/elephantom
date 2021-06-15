@@ -33,6 +33,7 @@ library:
   - template-haskell
   - kazura-queue
   - streamly
+  - scheduler
   - reflex
   - time
   - dependent-sum

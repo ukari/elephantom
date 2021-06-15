@@ -6,8 +6,7 @@
 {-# LANGUAGE OverloadedLists #-}
 
 module Conv
-  (
-  ) where
+  where
 
 
 import Data.Time (getCurrentTime, diffUTCTime)
@@ -20,10 +19,9 @@ import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 import Numeric.AD
 import System.Random
 
-
-import qualified Data.Vector.Generic as VG
 import Data.Bifunctor (first)
 import Control.Applicative (liftA2)
+import Control.Scheduler (getCompWorkers)
 
 test :: IO ()
 test = do
@@ -48,20 +46,24 @@ test2 = do
   print $ computeAs U $ (+0) <$> mapStencil Wrap st a3
   pure ()
 
+testsh :: IO ()
+testsh = do
+  print =<< getCompWorkers Par
+  print =<< getCompWorkers Par'
+  
+
 testdot :: IO ()
 testdot = do
   let rd = mkStdGen 2
   let a0 = randomArray rd split random Par (Sz 10000000) :: Array DL (Ix 1) Double
-  --print a0
-  let !a1 = computeP a0 :: Array U Ix1 Double
-
+  let !a1 = computeAs U a0 :: Array U Ix1 Double
   count $ print $ a1 !.! a1
+  --count $ print $ normL2 a1
 
+testdot2 :: IO ()
+testdot2 = do
   let !v = (fromUnboxedVector Par $ unfoldrExactN 10000000 random (mkStdGen 2)) :: Array U (Ix 1) Double
-
   count $ print $ v !.! v
-  
-  pure ()
 
 count :: IO () -> IO ()
 count f = do
@@ -69,3 +71,4 @@ count f = do
   f
   toc <- getCurrentTime
   print $ diffUTCTime toc tic
+

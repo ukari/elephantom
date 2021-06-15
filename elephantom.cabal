@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3d599017c1d2761352e334c0a8d378eae03c1baf15be367610d2ab59a0790250
+-- hash: 7903c02df4bb724ba501e6ad6c38569babc6d68bbe1243c98917f31d695b2bc2
 
 name:           elephantom
 version:        0.1.0.0
@@ -132,6 +132,7 @@ library
     , reflex
     , relude
     , resourcet
+    , scheduler
     , sdl2
     , streamly
     , template-haskell
