@@ -16,7 +16,8 @@ module Conv
 import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Vector.Unboxed (iterateN, generate, unfoldrExactN)
 import qualified Data.Vector.Unboxed as VU
-import Data.Massiv.Array hiding ((!*!), R, iterateN, generate, toList, fromList, product)
+import Data.Massiv.Array (Array (..), Comp (..), M, U (..), S, D, DL, Sz (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (...), singleton, fromLists', compute, computeAs, getComp, resize', resizeM, randomArray, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
+import qualified Data.Massiv.Array as Massiv
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
 import qualified Data.ByteString.Lazy as BL
@@ -241,7 +242,18 @@ loadIdx filepath = do
     Right (h, res) -> pure (h, res)
     Left err -> error err
 
-testIdx :: IO ()
-testIdx = do
-  timgs <- loadIdx "/tmp/nil/mnist/train-images.idx3-ubyte"
-  print . fst $ timgs
+loadInput :: Header -> DataSet -> Array M Ix2 Word8
+loadInput Header { dims, dnum } = resize' (Sz ((fromIntegral . product $ dims) :. fromIntegral dnum)) . fromByteString Par . BL.toStrict
+
+testidx :: IO ()
+testidx = do
+  (timgsh, timgsbl) <- loadIdx "/tmp/nil/mnist/train-images.idx3-ubyte"
+  print timgsh
+  let timgs = loadInput timgsh timgsbl :: Array M Ix2 Word8
+  print $ take (28*28) $ Massiv.toList timgs
+  (tlblsh, tlblsbl) <- loadIdx "/tmp/nil/mnist/train-labels.idx1-ubyte"
+  print tlblsh
+  (vimgsh, vimgsbl) <- loadIdx "/tmp/nil/mnist/t10k-images.idx3-ubyte"
+  print vimgsh
+  (vlblsh, vlblsbl) <- loadIdx "/tmp/nil/mnist/t10k-labels.idx1-ubyte"
+  print vlblsh

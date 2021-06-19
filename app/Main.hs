@@ -4,4 +4,4 @@ import Lib
 import Conv
 
 main :: IO ()
-main = testdot -- someFunc
+main = testidx -- someFunc
