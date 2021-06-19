@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
@@ -15,19 +16,20 @@ module Conv
 import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Vector.Unboxed (iterateN, generate, unfoldrExactN)
 import qualified Data.Vector.Unboxed as VU
-import Data.Massiv.Array hiding ((!*!), R, iterateN, generate, toList, fromList)
+import Data.Massiv.Array hiding ((!*!), R, iterateN, generate, toList, fromList, product)
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
 import qualified Data.ByteString.Lazy as BL
 --import Data.ByteString.Builder
 import Data.Binary.Get (Get, runGet, getWord32be)
-import Data.Attoparsec.ByteString.Lazy (Parser, Result (..), anyWord8, count, word8, parse, takeLazyByteString)
+import Data.Attoparsec.ByteString.Lazy (Parser, Result (..), anyWord8, count, word8, parse, takeLazyByteString, eitherResult)
 import qualified Data.Attoparsec.ByteString.Lazy as Attoparsec
 import Numeric.AD
 import System.Random
 import Conduit
 import Data.Conduit.Attoparsec (conduitParserEither)
 
+import Data.Ratio (Ratio, (%))
 import Data.Word (Word8, Word16, Word32)
 import Data.Functor (void)
 import Data.Bifunctor (first)
@@ -175,7 +177,8 @@ testimnn = do
 
 -- mnist idx
 data Header = Header
-  { dtype :: !Word8
+  { dtype :: !DataType
+  , dnum :: !Word32
   , dims :: ![ Word32 ]
   }
   deriving (Show)
@@ -185,19 +188,60 @@ dim = do
   bs <- Attoparsec.take 4
   pure . runGet getWord32be . BL.fromStrict $ bs
 
-idx :: Parser (Header, BL.ByteString)
+type DataSet = BL.ByteString
+
+data DataType
+  = DtUnsignedByte
+  | DtSignedByte
+  | DtShort
+  | DtInt
+  | DtFloat
+  | DtDouble
+  deriving (Show)
+
+dataLen :: DataType -> Int
+dataLen = \case
+  DtUnsignedByte -> 8
+  DtSignedByte -> 8
+  DtShort -> 8 * 2
+  DtInt -> 8 * 4
+  DtFloat -> 8 * 4
+  DtDouble -> 8 * 4
+
+dataType :: Parser DataType
+dataType = do
+  dtypew <- anyWord8
+  case dtypew of
+    0x08 -> pure DtUnsignedByte
+    0x09 -> pure DtSignedByte
+    0x0B -> pure DtShort
+    0x0C -> pure DtInt
+    0x0D -> pure DtFloat
+    0x0F -> pure DtDouble
+    v -> fail $ "can't parse idx data type with value " <> show v
+
+idx :: Parser (Header, DataSet)
 idx = do
   void . count 2 . word8 $ 0
-  dtype <- anyWord8
+  dtype <- dataType
   dimNum <- anyWord8
-  dims <- count (fromIntegral dimNum) dim
+  dnum <- dim
+  dims <- count (fromIntegral dimNum - 1) dim
   datas <- takeLazyByteString
-  pure (Header { dtype, dims }, datas)
+  let dblLen = BL.length datas
+  let actualDnum = fromIntegral (dblLen * 8) % (dataLen dtype * fromIntegral (product dims))
+  if actualDnum == fromIntegral dnum
+    then pure (Header { dtype, dnum, dims }, datas)
+    else fail $ "idx file format error, data numbers " <> show actualDnum <> " is not correct, should be " <> show dnum
 
-load :: IO ()
-load = do
-  trainImagesBL <- BL.readFile "/tmp/nil/mnist/train-images.idx3-ubyte"
-  case parse idx trainImagesBL of
-    Done partial (h, res) -> print h
-    _ -> error "fail to load"
-  pure ()
+loadIdx :: FilePath -> IO (Header, DataSet)
+loadIdx filepath = do
+  trainImagesBL <- BL.readFile filepath
+  case eitherResult . parse idx $ trainImagesBL of
+    Right (h, res) -> pure (h, res)
+    Left err -> error err
+
+testIdx :: IO ()
+testIdx = do
+  timgs <- loadIdx "/tmp/nil/mnist/train-images.idx3-ubyte"
+  print . fst $ timgs
