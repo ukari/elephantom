@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7903c02df4bb724ba501e6ad6c38569babc6d68bbe1243c98917f31d695b2bc2
+-- hash: acd1bc0c4cc850274e9146930f362cfb56c1254e6ff56d7fff9096740b45f8e6
 
 name:           elephantom
 version:        0.1.0.0
@@ -105,8 +105,12 @@ library
     , VulkanMemoryAllocator
     , ad
     , aeson
+    , attoparsec
     , base >=4.7 && <5
+    , binary
     , bytestring
+    , conduit
+    , conduit-extra
     , containers
     , dependent-sum
     , derive-storable

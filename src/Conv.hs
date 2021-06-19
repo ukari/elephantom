@@ -1,3 +1,6 @@
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeApplications #-}
@@ -15,10 +18,18 @@ import qualified Data.Vector.Unboxed as VU
 import Data.Massiv.Array hiding ((!*!), R, iterateN, generate, toList, fromList)
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
-
+import qualified Data.ByteString.Lazy as BL
+--import Data.ByteString.Builder
+import Data.Binary.Get (Get, runGet, getWord32be)
+import Data.Attoparsec.ByteString.Lazy (Parser, Result (..), anyWord8, count, word8, parse, takeLazyByteString)
+import qualified Data.Attoparsec.ByteString.Lazy as Attoparsec
 import Numeric.AD
 import System.Random
+import Conduit
+import Data.Conduit.Attoparsec (conduitParserEither)
 
+import Data.Word (Word8, Word16, Word32)
+import Data.Functor (void)
 import Data.Bifunctor (first)
 import Control.Applicative (liftA2)
 import Control.Scheduler (getCompWorkers)
@@ -66,16 +77,16 @@ testdot = do
   let rd = mkStdGen 2
   let a0 = randomArray rd split random Par (Sz 10000000) :: Array DL (Ix 1) Double
   let !a1 = computeAs U a0 :: Array U Ix1 Double
-  count $ print $ a1 !.! a1
+  tcount $ print $ a1 !.! a1
   --count $ print $ normL2 a1
 
 testdot2 :: IO ()
 testdot2 = do
   let !v = (fromUnboxedVector Par $ unfoldrExactN 10000000 random (mkStdGen 2)) :: Array U (Ix 1) Double
-  count $ print $ v !.! v
+  tcount $ print $ v !.! v
 
-count :: IO () -> IO ()
-count f = do
+tcount :: IO () -> IO ()
+tcount f = do
   tic <- getCurrentTime
   f
   toc <- getCurrentTime
@@ -159,4 +170,34 @@ testimnn = do
   print layer1
   print layer2
   print layer3
+  pure ()
+
+
+-- mnist idx
+data Header = Header
+  { dtype :: !Word8
+  , dims :: ![ Word32 ]
+  }
+  deriving (Show)
+
+dim :: Parser Word32
+dim = do
+  bs <- Attoparsec.take 4
+  pure . runGet getWord32be . BL.fromStrict $ bs
+
+idx :: Parser (Header, BL.ByteString)
+idx = do
+  void . count 2 . word8 $ 0
+  dtype <- anyWord8
+  dimNum <- anyWord8
+  dims <- count (fromIntegral dimNum) dim
+  datas <- takeLazyByteString
+  pure (Header { dtype, dims }, datas)
+
+load :: IO ()
+load = do
+  trainImagesBL <- BL.readFile "/tmp/nil/mnist/train-images.idx3-ubyte"
+  case parse idx trainImagesBL of
+    Done partial (h, res) -> print h
+    _ -> error "fail to load"
   pure ()

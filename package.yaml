@@ -33,6 +33,8 @@ library:
   - template-haskell
   - kazura-queue
   - streamly
+  - conduit
+  - conduit-extra
   - scheduler
   - reflex
   - time
@@ -43,6 +45,7 @@ library:
   - vector >= 0.12.3.0
   - vector-algorithms
   - text
+  - binary
   - bytestring
   - utf8-string
   - qm-interpolated-string
@@ -51,6 +54,7 @@ library:
   - temporary-rc
   - aeson
   - recursion-schemes
+  - attoparsec
   - parsec
   - StateVar
   - sdl2
