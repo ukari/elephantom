@@ -235,9 +235,9 @@ idx = do
     then pure (Header { dtype, dnum, dims }, datas)
     else fail $ "idx file format error, data numbers " <> show actualDnum <> " is not correct, should be " <> show dnum
 
-loadIdx :: FilePath -> IO (Header, DataSet)
+loadIdx :: MonadIO m => FilePath -> m (Header, DataSet)
 loadIdx filepath = do
-  trainImagesBL <- BL.readFile filepath
+  trainImagesBL <- liftIO . BL.readFile $ filepath
   case eitherResult . parse idx $ trainImagesBL of
     Right (h, res) -> pure (h, res)
     Left err -> error err
