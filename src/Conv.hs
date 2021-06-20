@@ -36,6 +36,7 @@ import Data.Functor (void)
 import Data.Bifunctor (first)
 import Control.Applicative (liftA2)
 import Control.Scheduler (getCompWorkers)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 
 wx :: IO ()
 wx = do
