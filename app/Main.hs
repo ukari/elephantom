@@ -4,4 +4,4 @@ import Lib
 import Conv
 
 main :: IO ()
-main = testidx -- someFunc
+main = tcount $ testimnn -- someFunc

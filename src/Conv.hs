@@ -16,7 +16,7 @@ module Conv
 import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Vector.Unboxed (iterateN, generate, unfoldrExactN)
 import qualified Data.Vector.Unboxed as VU
-import Data.Massiv.Array (Array (..), Comp (..), M, U (..), S, D, DL, Sz (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (...), singleton, fromLists', compute, computeAs, getComp, resize', resizeM, randomArray, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
+import Data.Massiv.Array (Array (..), Comp (..), M, U (..), S, D, DL, Sz (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (.+), (...), singleton, fromLists', compute, computeAs, getComp, size, resize', resizeM, randomArray, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
 import qualified Data.Massiv.Array as Massiv
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
@@ -168,14 +168,26 @@ mkFull rseed featureNum sampleNum = FullyConnected w b where
 testimnn :: IO ()
 testimnn = do
   --let input = Input 2
-  let layer1 = mkFull (mkStdGen 0) 3 2
-  let layer2 = mkFull (mkStdGen 1) 2 3
-  let layer3 = mkFull (mkStdGen 2) 1 2
-  print layer1
-  print layer2
-  print layer3
+  -- n 28x28 m 6000
+  let layer1 = mkFull (mkStdGen 0) 4 (28*28)
+  let layer2 = mkFull (mkStdGen 1) 2 4
+  let layer3 = mkFull (mkStdGen 2) 10 2
+  -- print layer1
+  -- print layer2
+  -- print layer3
+  (timgsh, timgsbl) <- loadIdx "/tmp/nil/mnist/train-images.idx3-ubyte"
+  print timgsh
+  let timgs = loadInput timgsh timgsbl :: Array M Ix2 Word8
+  let timgs' = compute $ Massiv.map ((/ 256.0) . fromIntegral) timgs :: Array U Ix2 Double
+  let !a1 = cal layer1 timgs'
+  let !a2 = cal layer2 a1
+  let !a3 = cal layer3 a2
+  print $ size a3
+  --print a3
   pure ()
 
+cal :: Layer -> Array U Ix2 Double -> Array U Ix2 Double
+cal (FullyConnected w b) a = (w !><! a) .+ b
 
 -- mnist idx
 data Header = Header
