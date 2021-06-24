@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -12,11 +13,12 @@
 module Conv
   where
 
-
+import Data.Bifunctor (second)
 import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Vector.Unboxed (iterateN, generate, unfoldrExactN)
 import qualified Data.Vector.Unboxed as VU
-import Data.Massiv.Array (Array (..), Comp (..), M, U (..), S, D, DL, Sz (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (.+), (...), singleton, fromLists', compute, computeAs, getComp, size, resize', resizeM, randomArray, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
+import Data.Massiv.Array (Numeric, Mutable, Manifest)
+import Data.Massiv.Array (Array (..), Comp (..), Dimension (..), M, U (..), S, D (..), DL, Sz (..), Sz1 (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (.+), (!+!), (...), singleton, fromLists', compute, computeAs, expandWithin, getComp, size, unSz, unconsSz, unsnocSz, resize', resizeM, randomArray, randomArrayS, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil, getDimension) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
 import qualified Data.Massiv.Array as Massiv
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
@@ -142,7 +144,7 @@ tcount f = do
 -- Y 1行xm列
 -- w n维向量
 -- w^t w的转置
--- b 实数
+-- b 实数(每层的每个结点都有一个b)
 -- z 设z为w^t * x + b
 -- yhat 单样本预测值 yhat = sigma(w^t * x + b) = sigma(z)
 -- sigma(z) = 1 / (1 + e ^ (-z))
@@ -152,18 +154,31 @@ tcount f = do
 
 data Input = Input Int deriving (Show)
 
-data Layer = FullyConnected (Array U Ix2 Double) Double deriving (Show)
+data Layer = FullyConnected (Array U Ix2 Double) (Array U Ix1 Double) deriving (Show)
 
 mkWeight :: StdGen -> Int -> Int -> Array U Ix2 Double
 mkWeight rseed featureNum sampleNum = computeAs U . resize' (Sz (featureNum :. sampleNum)) . randomArray rseed split random Par . Sz $ featureNum * sampleNum
 
 mkFull :: StdGen -> Int -> Int -> Layer
 mkFull rseed featureNum sampleNum = FullyConnected w b where
-  b :: Double
+  b :: Array U Ix1 Double
   nrseed :: StdGen
-  (b, nrseed) = random rseed
+  (nrseed, b) = randomArrayS rseed (Sz1 featureNum) random
   w :: Array U Ix2 Double
-  w = computeAs U . resize' (Sz (featureNum :. sampleNum)) . randomArray nrseed split random Par . Sz $ featureNum * sampleNum
+  w = compute . resize' (Sz (featureNum :. sampleNum)) . randomArray nrseed split random Par . Sz $ featureNum * sampleNum  
+
+broadcastPointwiseAdd :: (Numeric r e, Mutable r Ix2 e, Manifest r Ix1 e) => Array r Ix2 e -> Array r Ix1 e -> Array r Ix2 e
+broadcastPointwiseAdd m v = m !+! (compute . Massiv.transpose . expandWithin Dim1 (fst . unconsSz . size $ m) const $ v)
+
+testexpand :: IO ()
+testexpand = do
+  let w = compute $ resize' (Sz (2 :. 3)) (0 ... 5) :: Array U Ix2 Int
+  let b = compute (0 ... 2) :: Array U Ix1 Int
+  print w
+  print b
+  print $ w `broadcastPointwiseAdd` b
+  print $ getDimension (unSz . size $ w) Dim2
+  pure ()
 
 testimnn :: IO ()
 testimnn = do
@@ -177,17 +192,30 @@ testimnn = do
   -- print layer3
   (timgsh, timgsbl) <- loadIdx "/tmp/nil/mnist/train-images.idx3-ubyte"
   print timgsh
+  (tlblsh, tlblsbl) <- loadIdx "/tmp/nil/mnist/train-labels.idx1-ubyte"
   let timgs = loadInput timgsh timgsbl :: Array M Ix2 Word8
-  let timgs' = compute $ Massiv.map ((/ 256.0) . fromIntegral) timgs :: Array U Ix2 Double
-  let !a1 = cal layer1 timgs'
-  let !a2 = cal layer2 a1
-  let !a3 = cal layer3 a2
+  let timgs' = compute . Massiv.map ((/ 256.0) . fromIntegral) $ timgs :: Array U Ix2 Double
+  let tlbls = loadInput tlblsh tlblsbl :: Array M Ix2 Word8
+  print $ size tlbls
+  let z1 = cal layer1 timgs'
+  let a1 = compute . Massiv.map leakyRelu $ z1
+  let z2 = cal layer2 a1
+  let a2 = compute . Massiv.map leakyRelu $ z2
+  let z3 = cal layer3 a2
+  let a3 = compute . Massiv.map leakyRelu $ z3 :: Array U Ix2 Double
   print $ size a3
   --print a3
   pure ()
 
 cal :: Layer -> Array U Ix2 Double -> Array U Ix2 Double
-cal (FullyConnected w b) a = (w !><! a) .+ b
+cal (FullyConnected w b) a = (w !><! a) !+! (compute . expandWithin Dim1 sampleNum const $ b)
+  where
+    sampleNum = snd . unsnocSz . size $ a
+
+leakyRelu :: (Ord a, Fractional a) => a -> a
+leakyRelu z = if z >= 0.0
+  then z
+  else 0.01 * z
 
 -- mnist idx
 data Header = Header
