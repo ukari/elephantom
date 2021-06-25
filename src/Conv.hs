@@ -18,7 +18,7 @@ import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Vector.Unboxed (iterateN, generate, unfoldrExactN)
 import qualified Data.Vector.Unboxed as VU
 import Data.Massiv.Array (Numeric, Mutable, Manifest)
-import Data.Massiv.Array (Array (..), Comp (..), Dimension (..), M, U (..), S, D (..), DL, Sz (..), Sz1 (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (.+), (!+!), (...), singleton, fromLists', compute, computeAs, expandWithin, getComp, size, unSz, unconsSz, unsnocSz, resize', resizeM, randomArray, randomArrayS, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil, getDimension) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
+import Data.Massiv.Array (Array (..), Comp (..), Dimension (..), Dim (..), M, U (..), S, D (..), DL, Sz (..), Sz1 (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (.+), (!+!), (...), singleton, fromLists', compute, computeAs, expandWithin, expA, getComp, size, unSz, totalElem, unconsSz, unsnocSz, resize', resizeM, randomArray, randomArrayS, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil, getDim', getDimension, lastDim, totalElem, transform') -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
 import qualified Data.Massiv.Array as Massiv
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
@@ -168,7 +168,7 @@ mkFull rseed featureNum sampleNum = FullyConnected w b where
   w = compute . resize' (Sz (featureNum :. sampleNum)) . randomArray nrseed split random Par . Sz $ featureNum * sampleNum  
 
 broadcastPointwiseAdd :: (Numeric r e, Mutable r Ix2 e, Manifest r Ix1 e) => Array r Ix2 e -> Array r Ix1 e -> Array r Ix2 e
-broadcastPointwiseAdd m v = m !+! (compute . Massiv.transpose . expandWithin Dim1 (fst . unconsSz . size $ m) const $ v)
+broadcastPointwiseAdd m v = m !+! (compute . Massiv.transpose . expandWithin Dim1 (fst .unconsSz . size $ m) const $ v)
 
 testexpand :: IO ()
 testexpand = do
@@ -177,7 +177,22 @@ testexpand = do
   print w
   print b
   print $ w `broadcastPointwiseAdd` b
-  print $ getDimension (unSz . size $ w) Dim2
+  print $ getDimension (unSz . size $ w) (DimN :: Dimension 2)
+  print $ getDim' (unSz . size $ w) (Dim 1)
+  pure ()
+
+testexpand2 :: IO ()
+testexpand2 = do
+  let y = compute $ resize' (Sz (1 :. 6)) (0 ... 5) :: Array U Ix2 Int
+  let y' = resize' (Sz 6) y :: Array U Ix1 Int
+  let ye = compute $ expandWithin Dim2 (Sz 10) (\x ix -> if fromIntegral x == ix then 1 else 0) y' :: Array U Ix2 Double
+  print ye
+  print $ Massiv.map exp ye
+  pure ()
+
+testloss :: IO ()
+testloss = do
+  --let
   pure ()
 
 testimnn :: IO ()
@@ -196,7 +211,9 @@ testimnn = do
   let timgs = loadInput timgsh timgsbl :: Array M Ix2 Word8
   let timgs' = compute . Massiv.map ((/ 256.0) . fromIntegral) $ timgs :: Array U Ix2 Double
   let tlbls = loadInput tlblsh tlblsbl :: Array M Ix2 Word8
+  let tlblsV = compute . expandWithin Dim2 (Sz 10) (\x ix -> if fromIntegral x == ix then 1 else 0) . resize' (Sz1 . totalElem . size $ tlbls) $ tlbls :: Array U Ix2 Double
   print $ size tlbls
+  print $ size tlblsV
   let z1 = cal layer1 timgs'
   let a1 = compute . Massiv.map leakyRelu $ z1
   let z2 = cal layer2 a1
@@ -216,6 +233,8 @@ leakyRelu :: (Ord a, Fractional a) => a -> a
 leakyRelu z = if z >= 0.0
   then z
   else 0.01 * z
+
+
 
 -- mnist idx
 data Header = Header
