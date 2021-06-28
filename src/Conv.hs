@@ -18,7 +18,7 @@ import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Vector.Unboxed (iterateN, generate, unfoldrExactN)
 import qualified Data.Vector.Unboxed as VU
 import Data.Massiv.Array (Numeric, Mutable, Manifest)
-import Data.Massiv.Array (Array (..), Comp (..), Dimension (..), Dim (..), M, U (..), S, D (..), DL, Sz (..), Sz1 (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!><!), (.+), (!+!), (!/!), (...), singleton, fromLists', compute, computeAs, expandWithin, expA, getComp, size, unSz, totalElem, toLinearSz, unconsSz, unsnocSz, resize', resizeM, randomArray, randomArrayS, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil, getDim', getDimension, lastDim, totalElem, transform', outerSlices, innerSlices) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
+import Data.Massiv.Array (Array (..), Comp (..), Dimension (..), Dim (..), M, U (..), S, D (..), DL, Sz (..), Sz1 (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!*!), (!><!), (.+), (!+!), (!/!), (...), singleton, fromLists', compute, computeAs, expandWithin, expA, getComp, size, unSz, totalElem, toLinearSz, unconsSz, unsnocSz, resize', resizeM, randomArray, randomArrayS, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil, getDim', getDimension, lastDim, totalElem, transform', outerSlices, innerSlices) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
 import qualified Data.Massiv.Array as Massiv
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
@@ -181,6 +181,9 @@ testexpand = do
   print $ getDim' (unSz . size $ w) (Dim 1)
   pure ()
 
+onehot :: Int -> Array U Ix2 Int -> Array D Ix2 Double
+onehot c arr = expandWithin Dim2 (Sz c) (\x ix -> if fromIntegral x == ix then 1 else 0) (resize' (snd . unsnocSz . size $ arr) arr) -- Sz1 . totalElem . size
+
 testexpand2 :: IO ()
 testexpand2 = do
   let y = compute $ resize' (Sz (1 :. 6)) (0 ... 5) :: Array U Ix2 Int
@@ -198,7 +201,7 @@ testexpand2 = do
   pure ()
 
 -- | softmax
--- by column
+-- sum by row, split by column
 -- m: sample num
 -- c: categroy num
 -- shape (c:.m) -> shape (c:.m)
@@ -214,8 +217,16 @@ softmax y = expA y !/! expSum
 
 testloss :: IO ()
 testloss = do
-  --let
+  let y = resize' (Sz (1 :. 6)) (1 ... 6) :: Array D Ix2 Int
+  let yhat = resize' (Sz (1 :. 6)) (1 ... 6) :: Array D Ix2 Int
+  let yOnehot = onehot 10 $ compute y
+  let yhatSoftmax = Massiv.logA $ softmax $ onehot 10 $ compute yhat
+  let l = - (Massiv.sum $ yhatSoftmax !*! yOnehot)
+  print l
   pure ()
+
+loss :: Array D Ix2 Double -> Array D Ix2 Double -> Double
+loss yhat y = - sum (Massiv.logA yhat !*! y)
 
 testimnn :: IO ()
 testimnn = do
@@ -233,16 +244,18 @@ testimnn = do
   let timgs = loadInput timgsh timgsbl :: Array M Ix2 Word8
   let timgs' = compute . Massiv.map ((/ 256.0) . fromIntegral) $ timgs :: Array U Ix2 Double
   let tlbls = loadInput tlblsh tlblsbl :: Array M Ix2 Word8
-  let tlblsV = compute . expandWithin Dim2 (Sz 10) (\x ix -> if fromIntegral x == ix then 1 else 0) . resize' (Sz1 . totalElem . size $ tlbls) $ tlbls :: Array U Ix2 Double
+  let tlblsV = onehot 10 $ compute $ Massiv.map fromIntegral tlbls :: Array D Ix2 Double
   print $ size tlbls
   print $ size tlblsV
   let z1 = cal layer1 timgs'
-  let a1 = compute . Massiv.map leakyRelu $ z1
-  let z2 = cal layer2 a1
-  let a2 = compute . Massiv.map leakyRelu $ z2
-  let z3 = cal layer3 a2
-  let a3 = compute . Massiv.map leakyRelu $ z3 :: Array U Ix2 Double
-  --let yhat = compute $ softmax $ computeAs D a3 :: Array U Ix2 Double
+  let a1 = Massiv.map leakyRelu $ z1
+  let z2 = cal layer2 $ compute a1
+  let a2 = Massiv.map leakyRelu $ z2
+  let z3 = cal layer3 $ compute a2
+  let a3 = Massiv.map leakyRelu $ z3 :: Array D Ix2 Double
+  let yhat = softmax $ a3 :: Array D Ix2 Double
+  let l = loss yhat tlblsV
+  print l
   print $ size a3
   --print $ size yhat
   pure ()
