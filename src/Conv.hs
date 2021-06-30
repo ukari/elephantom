@@ -225,8 +225,11 @@ testloss = do
   print l
   pure ()
 
-loss :: Array D Ix2 Double -> Array D Ix2 Double -> Double
-loss yhat y = - sum (Massiv.logA yhat !*! y)
+crossEntropyCost :: Array D Ix2 Double -> Array D Ix2 Double -> Double
+crossEntropyCost yhat y = - sum (Massiv.logA yhat !*! y) / (fromIntegral . sampleNum $ y)
+  where
+    sampleNum :: Array D Ix2 Double -> Int
+    sampleNum = unSz . snd . unsnocSz . size
 
 testimnn :: IO ()
 testimnn = do
@@ -254,8 +257,8 @@ testimnn = do
   let z3 = cal layer3 $ compute a2
   let a3 = Massiv.map leakyRelu $ z3 :: Array D Ix2 Double
   let yhat = softmax $ a3 :: Array D Ix2 Double
-  let l = loss yhat tlblsV
-  print l
+  let cost = crossEntropyCost yhat tlblsV
+  print cost
   print $ size a3
   --print $ size yhat
   pure ()
