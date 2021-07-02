@@ -249,17 +249,23 @@ testimnn = do
   let tlbls = loadInput tlblsh tlblsbl :: Array M Ix2 Word8
   let tlblsV = onehot 10 $ compute $ Massiv.map fromIntegral tlbls :: Array D Ix2 Double
   print $ size tlbls
-  print $ size tlblsV
+  print $ "y" <> show (size tlblsV)
   let z1 = cal layer1 timgs'
   let a1 = Massiv.map leakyRelu $ z1
   let z2 = cal layer2 $ compute a1
   let a2 = Massiv.map leakyRelu $ z2
   let z3 = cal layer3 $ compute a2
+  print $ "z3 " <> show (size z3)
+  case layer3 of
+    FullyConnected w b -> do
+      print $ "a2 " <> show (size a2)
+      print $ "w " <> show (size w)
+      print $ "b " <> show (size b)
   let a3 = Massiv.map leakyRelu $ z3 :: Array D Ix2 Double
   let yhat = softmax $ a3 :: Array D Ix2 Double
-  let cost = crossEntropyCost yhat tlblsV
-  print cost
-  print $ size a3
+  -- let cost = crossEntropyCost yhat tlblsV
+  -- print cost
+  print $ "a3 " <> show (size a3)
   --print $ size yhat
   pure ()
 
