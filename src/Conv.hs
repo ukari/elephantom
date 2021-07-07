@@ -18,7 +18,7 @@ import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Vector.Unboxed (iterateN, generate, unfoldrExactN)
 import qualified Data.Vector.Unboxed as VU
 import Data.Massiv.Array (Numeric, Mutable, Manifest)
-import Data.Massiv.Array (Array (..), Comp (..), Dimension (..), Dim (..), M, U (..), S, D (..), DL, Sz (..), Sz1 (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!*!), (!><!), (.+), (!+!), (!/!), (...), singleton, fromLists', compute, computeAs, expandWithin, expA, getComp, size, unSz, totalElem, toLinearSz, unconsSz, unsnocSz, resize', resizeM, randomArray, randomArrayS, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil, getDim', getDimension, lastDim, totalElem, transform', outerSlices, innerSlices) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
+import Data.Massiv.Array (Array (..), Comp (..), Dimension (..), Dim (..), M, U (..), S, D (..), DL, Sz (..), Sz1 (..), Ix1, Ix2 ((:.)), Ix, Border (..), (!.!), (!*!), (*.), (-.), (!-!), (!><!), (.+), (!+!), (!/!), (...), singleton, fromLists', compute, computeAs, expandWithin, expA, getComp, size, unSz, totalElem, toLinearSz, unconsSz, unsnocSz, resize', resizeM, randomArray, randomArrayS, fromUnboxedVector, fromByteString, castFromByteString, makeStencil, mapStencil, getDim', getDimension, lastDim, totalElem, transform', outerSlices, innerSlices) -- hiding ((!*!), R, iterateN, generate, toList, fromList, product)
 import qualified Data.Massiv.Array as Massiv
 import Data.Massiv.Array.Manifest.Vector (VRepr, ARepr, toVector, fromVector')
 
@@ -76,7 +76,6 @@ testsh :: IO ()
 testsh = do
   print =<< getCompWorkers Par
   print =<< getCompWorkers Par'
-  
 
 testdot :: IO ()
 testdot = do
@@ -263,10 +262,24 @@ testimnn = do
       print $ "b " <> show (size b)
   let a3 = Massiv.map leakyRelu $ z3 :: Array D Ix2 Double
   let yhat = softmax $ a3 :: Array D Ix2 Double
-  -- let cost = crossEntropyCost yhat tlblsV
-  -- print cost
+  let cost = crossEntropyCost yhat tlblsV
+  print cost
   print $ "a3 " <> show (size a3)
   --print $ size yhat
+  let dbase3 = (-1 / (fromIntegral . unSz . snd . unsnocSz . size $ tlblsV)) *. tlblsV !*! (1 -. yhat) !*! (Massiv.map (diff leakyRelu) a3)
+  let dw3 = (dbase3 !*! Massiv.map id z3)
+  let db3 = dbase3
+  print $ size dbase3
+  let layer3' = case layer3 of
+        FullyConnected w b -> do
+          let w' = w !-! (1 / (fromIntegral . unSz . snd . unsnocSz . size $ tlblsV) *. (compute dw3 !><! compute (Massiv.transpose a2)))
+          let b' = b -- !-! compute db3
+          FullyConnected w' b'
+  let z3' = cal layer3' $ compute a2
+  let a3' = Massiv.map leakyRelu $ z3'
+  let yhat' = softmax a3'
+  let cost' = crossEntropyCost yhat' tlblsV
+  print cost'
   pure ()
 
 cal :: Layer -> Array U Ix2 Double -> Array U Ix2 Double
