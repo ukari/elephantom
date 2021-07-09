@@ -272,7 +272,7 @@ testimnn = do
   print $ size dbase3
   let layer3' = case layer3 of
         FullyConnected w b -> do
-          let w' = w !-! (1 / (fromIntegral . unSz . snd . unsnocSz . size $ tlblsV) *. (compute dw3 !><! compute (Massiv.transpose a2)))
+          let w' = w !-! (1 / (fromIntegral . unSz . snd . unsnocSz . size $ a2) *. (compute dw3 !><! compute (Massiv.transpose a2)))
           let b' = b -- !-! compute db3
           FullyConnected w' b'
   let z3' = cal layer3' $ compute a2
