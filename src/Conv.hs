@@ -224,6 +224,13 @@ testloss = do
   print l
   pure ()
 
+testdb :: IO ()
+testdb = do
+  let dbase = resize' (Sz (10 :. 6)) (1 ... 60) :: Array D Ix2 Int
+  let db = Massiv.map Massiv.sum (innerSlices (Massiv.transpose dbase) :: Array D Ix1 (Massiv.Elt D Ix2 Int))
+  print dbase
+  print db
+
 crossEntropyCost :: Array D Ix2 Double -> Array D Ix2 Double -> Double
 crossEntropyCost yhat y = - sum (Massiv.logA yhat !*! y) / (fromIntegral . sampleNum $ y)
   where
@@ -248,7 +255,7 @@ testimnn = do
   let tlbls = loadInput tlblsh tlblsbl :: Array M Ix2 Word8
   let tlblsV = onehot 10 $ compute $ Massiv.map fromIntegral tlbls :: Array D Ix2 Double
   print $ size tlbls
-  print $ "y" <> show (size tlblsV)
+  print $ "y " <> show (size tlblsV)
   let z1 = cal layer1 timgs'
   let a1 = Massiv.map leakyRelu $ z1
   let z2 = cal layer2 $ compute a1
@@ -268,18 +275,21 @@ testimnn = do
   --print $ size yhat
   let dbase3 = (-1 / (fromIntegral . unSz . snd . unsnocSz . size $ tlblsV)) *. tlblsV !*! (1 -. yhat) !*! (Massiv.map (diff leakyRelu) a3)
   let dw3 = (dbase3 !*! Massiv.map id z3)
-  let db3 = dbase3
-  print $ size dbase3
+  let db3 = Massiv.map Massiv.sum . innerSlices . Massiv.transpose $ dbase3 
+  print $ "dbase3 " <> show (size dbase3)
+  print $ ((1 / (fromIntegral . unSz . snd . unsnocSz . size $ a2) *. (compute dw3 !><! compute (Massiv.transpose a2))) :: Array U Ix2 Double)
+  print db3
+  print layer3
   let layer3' = case layer3 of
         FullyConnected w b -> do
           let w' = w !-! (1 / (fromIntegral . unSz . snd . unsnocSz . size $ a2) *. (compute dw3 !><! compute (Massiv.transpose a2)))
-          let b' = b -- !-! compute db3
+          let b' = b !-! compute db3
           FullyConnected w' b'
   let z3' = cal layer3' $ compute a2
   let a3' = Massiv.map leakyRelu $ z3'
   let yhat' = softmax a3'
   let cost' = crossEntropyCost yhat' tlblsV
-  print cost'
+  print cost' 
   pure ()
 
 cal :: Layer -> Array U Ix2 Double -> Array U Ix2 Double
