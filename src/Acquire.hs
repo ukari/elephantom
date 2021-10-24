@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -20,10 +22,12 @@ module Acquire
 
 import Prelude hiding (reverse)
 
+import Data.Tuple (swap)
 import Data.Sequence (Seq (..), (><), singleton, reverse)
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Class (MonadTrans (..))
+import Control.Monad.Trans.Writer.Strict (WriterT, Writer, runWriterT, runWriter, writer, tell)
 import Control.Monad.IO.Unlift (MonadUnliftIO (..))
 
 data Acquire a = Acquire (IO a) (a -> IO ())
@@ -38,7 +42,12 @@ instance Monoid Cleaner where
 
 data Clean = forall a . Clean (a -> IO ()) a
 
-newtype CleanerT m a = CleanerT { unCleanerT :: forall r . ((Cleaner, a) -> m r) -> m r}
+newtype CleanerT m a = CleanerT { unCleanerT :: forall r . ((Cleaner, a) -> m r) -> m r }
+
+newtype CleanerT' m a = CleanerT' { unCleanerT' :: WriterT Cleaner m a } deriving (Functor, Applicative, Monad, MonadTrans, MonadIO)
+
+-- instance MonadTrans CleanerT' where
+--   lift = CleanerT' . lift
 
 instance Functor (CleanerT m) where
   fmap f mx = CleanerT $ \r ->
@@ -75,17 +84,35 @@ class MonadIO m => MonadCleaner m where
 instance MonadCleaner (CleanerT IO) where
   liftCleanerT ioa = CleanerT $ unCleanerT ioa
 
+class MonadIO m => MonadCleaner' m where
+  liftCleanerT' :: CleanerT' IO a -> m a
+
+instance MonadCleaner' (CleanerT' IO) where
+  liftCleanerT' ioa = CleanerT' $ unCleanerT' ioa
+
 runCleanerT :: MonadIO m => CleanerT m a -> m a
 runCleanerT ct = unCleanerT ct $ \(cleaner, res) -> do
   liftIO $ cleanup cleaner
   pure res
 
+runCleanerT' :: MonadIO m => CleanerT' m a -> m a
+runCleanerT' ct = do
+  (a, w) <- runWriterT . unCleanerT' $ ct
+  liftIO . cleanup $ w
+  pure a
+
 collect :: (MonadUnliftIO m) => CleanerT m a -> m (Cleaner, a)
 collect ma = unCleanerT ma $ \(cleaner, a) -> withRunInIO $ \run -> 
- run (pure (cleaner, a))
+  run (pure (cleaner, a))
+
+collect' :: Monad m => CleanerT' m a -> m (Cleaner, a)
+collect' = (swap <$>) . runWriterT . unCleanerT'
 
 register :: (MonadCleaner m) => Cleaner -> m ()
 register cleaner = liftCleanerT $ CleanerT ($ (cleaner, ()))
+
+register' :: (MonadCleaner' m) => Cleaner -> m ()
+register' = liftCleanerT' . CleanerT' . tell
 
 mkAcquire :: IO a -> (a -> IO ()) -> Acquire a
 mkAcquire = Acquire
@@ -112,3 +139,10 @@ acquireT create destroy = do
   res <- liftIO create
   register . mkCleaner . destroy $ res
   pure res
+
+test :: IO (Int)
+test = runCleanerT' $ do
+  register' $ mkCleaner $ print "1"
+  register' $ mkCleaner $ print "2"
+  register' $ mkCleaner $ print "3"
+  pure 1
