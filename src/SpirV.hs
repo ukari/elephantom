@@ -521,7 +521,7 @@ eitherReflection stage code = runExceptT $ do
   (spirv, reflectionRaw) <- except =<< eitherReflect stage code
   ref <- except . eitherDecodeStrict' @Reflection . BL.toStrict $ reflectionRaw
   pure (Shader { stage, code = spirv }, ref)
-  
+
 reflection' :: MonadIO m => "spirv" ::: B.ByteString -> m (Shader, Reflection)
 reflection' spirv = do
   reflectionRaw <- reflect' spirv

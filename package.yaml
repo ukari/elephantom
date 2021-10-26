@@ -71,7 +71,6 @@ library:
   - JuicyPixels
   - FontyFruity
   - Rasterific
-
   - fused-effects
   - fused-effects-exceptions
   - transformers

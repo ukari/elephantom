@@ -24,7 +24,6 @@ import Prelude hiding (reverse)
 import Data.Sequence (Seq (..), (><), singleton, reverse)
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Effect.Writer (tell)
 import Control.Carrier.Writer.Strict (WriterC, runWriter)
 
@@ -42,7 +41,7 @@ data Clean = forall a . Clean (a -> IO ()) a
 
 newtype CleanerT m a = CleanerT
   { unCleanerT :: WriterC Cleaner m a
-  } deriving (Functor, Applicative, Monad, MonadTrans, MonadIO)
+  } deriving (Functor, Applicative, Monad, MonadIO)
 
 class MonadIO m => MonadCleaner m where
   liftCleanerT :: CleanerT IO a -> m a
