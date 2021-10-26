@@ -25,7 +25,6 @@ import Data.Text (Text, pack, unpack)
 import Data.Functor (void)
 -- import Control.Monad.Trans.Except (ExceptT, runExcept, withExcept)
 import Control.Exception (Exception)
-import Control.Error.Util (hoistEither, failWith)
 
 -- https://www.khronos.org/opengl/wiki/Core_Language_(GLSL)
 -- https://github.com/KhronosGroup/GLSL/blob/master/extensions/khr/GL_KHR_vulkan_glsl.txt

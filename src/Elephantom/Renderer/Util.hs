@@ -16,10 +16,7 @@ import Data.Word (Word32)
 import Data.ByteString.Char8 (ByteString)
 import Data.Maybe (fromMaybe)
 
-import Control.Monad.Trans.Maybe (runMaybeT)
-import Control.Monad.Trans.Except (runExceptT)
 import Control.Exception (Exception (..), throw)
-import Control.Error.Util (hoistMaybe, failWith)
 
 import Elephantom.Renderer.ApplicationInfo (appInfo)
 
@@ -41,14 +38,12 @@ promoteTo = \case
   _ -> Nothing
 
 tryWithM :: Monad m => a -> Maybe a -> m a
-tryWithM normal value = runMaybeT (hoistMaybe value) >>= \case
-  Just x -> pure x
-  Nothing -> pure normal
+tryWithM = fmap pure . fromMaybe
 
 tryWithEM :: (Exception e, Monad m) => e -> Maybe a -> m a
-tryWithEM ex value = runExceptT (failWith ex value) >>= \case
-    Right x -> pure x
-    Left e -> throw e
+tryWithEM ex = \case
+    Just x -> pure x
+    Nothing -> throw ex
 
 {-# INLINE tryWith #-}
 tryWith :: a -> Maybe a -> a

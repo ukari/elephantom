@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: acd1bc0c4cc850274e9146930f362cfb56c1254e6ff56d7fff9096740b45f8e6
+-- hash: 000f026ea2fac3e461b24406f565def7f80580589ff38de54515545a019a8eac
 
 name:           elephantom
 version:        0.1.0.0
@@ -114,7 +114,6 @@ library
     , containers
     , dependent-sum
     , derive-storable
-    , errors
     , filepath
     , fused-effects
     , fused-effects-exceptions
@@ -145,7 +144,6 @@ library
     , time
     , transformers
     , typed-process
-    , unliftio
     , unliftio-core
     , utf8-string
     , vector >=0.12.3.0

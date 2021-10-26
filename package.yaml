@@ -71,11 +71,10 @@ library:
   - JuicyPixels
   - FontyFruity
   - Rasterific
-  - errors
+
   - fused-effects
   - fused-effects-exceptions
   - transformers
-  - unliftio
   - monad-logger
   - derive-storable
   - offset
