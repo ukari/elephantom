@@ -47,7 +47,7 @@ class MonadIO m => MonadCleaner m where
   liftCleanerT :: CleanerT IO a -> m a
 
 instance MonadCleaner (CleanerT IO) where
-  liftCleanerT ioa = CleanerT $ unCleanerT ioa
+  liftCleanerT = CleanerT . unCleanerT
 
 runCleanerT :: MonadIO m => CleanerT m a -> m a
 runCleanerT ct = do
