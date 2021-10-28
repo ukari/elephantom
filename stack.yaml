@@ -76,7 +76,7 @@ extra-deps:
 - zenhack-prelude-0.1.1.0@sha256:1ffdc0ad17e7c25786ef671f5889c165b325265b6d85ef4518a38fb1c52c446a,960
 ## fused-effects-exceptions
 - fused-effects-exceptions-1.1.0.0@sha256:c1880f55360deaa4441bda9ff09a4ce6dbd63df8c175c7ada16a5d67a3717bee,1749
-- fused-effects-1.1.1.0@sha256:6f5cf3f2d0d61f39d97b8f63bc96564d0f64bc2801f3da828572d9f99f1e79f4,5139
+- fused-effects-1.1.1.1@sha256:c029c5fb0b2154281221a71ff25709d2a11347fe061fa8c2398e7fe52a16008d,4932
 ## reflex begin
 - reflex-0.8.0.0@sha256:e50de03568818072e2811211431ffe9811aeed69f3b24104b1dafb1b6fd0a525,11942
 - monoidal-containers-0.6.0.1@sha256:ffdfae0fde7a08e9e314667a78d86454d2d23137d85f226ec6e757c190fb28ad,2583
