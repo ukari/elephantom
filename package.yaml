@@ -10,6 +10,11 @@ extra-source-files:
 - README.md
 - ChangeLog.md
 
+## only used for dev
+data-dir: "assets"
+data-files:
+- font/*
+
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
 # category:            Web
@@ -28,6 +33,7 @@ dependencies:
 library:
   source-dirs: src
   dependencies:
+  - word24
   - lens
   - relude
   - template-haskell

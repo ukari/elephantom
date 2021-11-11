@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 000f026ea2fac3e461b24406f565def7f80580589ff38de54515545a019a8eac
+-- hash: 34003dcabdfd3f86dccaace42106b4c2e90fbab026bd28bede968e7762a01d9b
 
 name:           elephantom
 version:        0.1.0.0
@@ -20,6 +20,10 @@ build-type:     Simple
 extra-source-files:
     README.md
     ChangeLog.md
+data-files:
+    font/NotoSansMonoCJKsc-Regular.otf
+    font/SourceCodePro-Regular.ttf
+data-dir:       assets
 
 source-repository head
   type: git
@@ -88,6 +92,17 @@ library
       Lib
       Listen
       Offset
+      OpenType
+      OpenType.DataTypes
+      OpenType.FontTable.Required.Cmap
+      OpenType.FontTable.Required.Head
+      OpenType.FontTable.Required.Hhea
+      OpenType.FontTable.Required.Hmtx
+      OpenType.FontTable.Required.Maxp
+      OpenType.FontTable.Required.Name
+      OpenType.FontTable.Required.OS2
+      OpenType.TableDirectory
+      OpenType.TTCHeader
       Orphan
       Shader
       SpirV
@@ -150,6 +165,7 @@ library
     , vector-algorithms
     , vulkan
     , vulkan-utils
+    , word24
   default-language: Haskell2010
 
 executable elephantom
