@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -231,6 +232,21 @@ testdb = do
   print dbase
   print db
 
+testd :: IO ()
+testd = do
+  let a0 = resize' (Sz (2 :. 1)) (1 ... 2) :: Array D Ix2 Int
+  print a0
+  let w1 = resize' (Sz (3 :. 2)) (2 ... 7) :: Array D Ix2 Int
+  let w2 = resize' (Sz (4 :. 3)) (1 ... 12) :: Array D Ix2 Int
+  let a1 = compute w1 !><! compute a0 :: Array U Ix2 Int
+  let a2 = compute w2 !><! compute a1 :: Array U Ix2 Int
+  print w1
+  print a1
+  print w2
+  print a2
+
+  
+
 crossEntropyCost :: Array D Ix2 Double -> Array D Ix2 Double -> Double
 crossEntropyCost yhat y = - sum (Massiv.logA yhat !*! y) / (fromIntegral . sampleNum $ y)
   where
@@ -289,8 +305,12 @@ testimnn = do
   let a3' = Massiv.map leakyRelu $ z3'
   let yhat' = softmax a3'
   let cost' = crossEntropyCost yhat' tlblsV
-  print cost' 
+  print cost'
   pure ()
+
+updateLayer :: Layer -> Layer -> Layer
+updateLayer (FullyConnected w b) (FullyConnected dw db) = undefined
+  
 
 cal :: Layer -> Array U Ix2 Double -> Array U Ix2 Double
 cal (FullyConnected w b) a = (w !><! a) !+! (compute . expandWithin Dim1 sampleNum const $ b)
