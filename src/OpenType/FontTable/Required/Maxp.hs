@@ -1,6 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
-module OpenType.FontTable.Required
+module OpenType.FontTable.Required.Maxp
   (
   ) where
 

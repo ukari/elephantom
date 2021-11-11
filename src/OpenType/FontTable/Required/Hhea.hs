@@ -1,4 +1,4 @@
-module OpenType.FontTable.Required.Head
+module OpenType.FontTable.Required.Hhea
   (
   ) where
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module OpenType.FontTable.Required
+module OpenType.FontTable.Required.Name
   (
   ) where
 
