@@ -4,4 +4,6 @@ import Lib
 import Conv
 
 main :: IO ()
-main = tcount $ testimnn -- someFunc
+main = someFunc
+-- main = tcount $ testimnn
+--main = testfont

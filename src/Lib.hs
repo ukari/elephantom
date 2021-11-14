@@ -25,6 +25,7 @@
 
 module Lib
     ( someFunc
+    , testfont
     ) where
 
 import qualified SDL
@@ -46,7 +47,7 @@ import Codec.Picture (PixelRGBA8 (..), readImage, imageData)
 import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
 import Graphics.Rasterific.Texture (uniformTexture)
-import Graphics.Text.TrueType (loadFontFile, decodeFont)
+import Graphics.Text.TrueType (loadFontFile, decodeFont, descriptorOf)
 
 import Language.Haskell.TH hiding (location)
 import Type.Reflection (SomeTypeRep, splitApps, typeOf)
@@ -85,6 +86,7 @@ import Data.Dependent.Sum (DSum ((:=>)))
 import qualified Data.StateVar as StateVar
 import System.Mem.Weak
 import System.Mem.StableName
+import Numeric (showHex)
 
 import Streamly
 import Streamly.Prelude (drain, yield, repeatM)
@@ -118,7 +120,14 @@ import Control.Concurrent (MVar, newMVar, readMVar, forkIO, forkOS, threadDelay,
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
 import Data.Functor.Identity (runIdentity)
 
+import Control.Algebra (Has)
+import Control.Carrier.Lift (runM)
+import Control.Carrier.Throw.Either (ThrowC (..), runThrow)
+import Control.Carrier.Error.Either (ErrorC (..), runError)
+import Control.Effect.Lift (Lift (..))
 import Control.Effect.Writer (Writer (..), tell, run)
+import Control.Effect.Error (Error)
+import Control.Effect.Throw (Throw (..), throwError, liftEither)
 
 import Control.Monad.Logger (runStdoutLoggingT)
 -- import Control.Concurrent
@@ -135,7 +144,38 @@ import qualified Elephantom.Renderer as Lib
 import Elephantom.Application (Application (..), defaultApplication)
 import Acquire (Acquire, Cleaner, MonadCleaner, mkAcquire, acquireT, cleanup, collect)
 
-testf = decodeFont "foo测aefasuqqqqqqqqqqqqqqqqqqqqqqqqx试"
+import Elephantom.Renderer.RendererException
+
+import System.Environment (getExecutablePath)
+import Paths_elephantom (getDataFileName)
+
+testEff :: IO (Either RendererException ())
+testEff = runError $ testThrowException
+
+testThrowException :: ( Has (Error RendererException :+: Lift IO) sig m
+                      , Has (Lift IO) sig m
+                      , MonadIO m
+                      ) => m ()
+testThrowException = do
+  liftIO $ print "hi1"
+  sendIO $ print "hi2"
+  sendM $ print "hi3"
+  x <- throwError VulkanDeviceNotFound
+  return ()
+
+testfont :: IO ()
+testfont = do
+  ep <- getExecutablePath
+  print ep
+  fontfile <- getDataFileName "font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
+  print fontfile
+  res <- loadFontFile fontfile
+  case res of
+    Left e -> print $ "fail to load font " <> e
+    Right font -> print $ ("load font " <>) . show <$> descriptorOf font
+  print "test font"
+
+-- decodeFont "foo测aefasuqqqqqqqqqqqqqqqqqqqqqqqqx试"
 
 testRelease :: IO ()
 testRelease = runResourceT $ do
@@ -274,8 +314,9 @@ someFunc = runResourceT $ do
       (repeatM . runStdoutLoggingT . listenLoop $ eventQueue)
   inst <- withInst application window
   surf <- snd <$> withSurface inst window allocate
-  phys <- getPhysicalDevice inst
+  (vendorID, phys) <- getPhysicalDevice inst
   liftIO . print . maxBoundDescriptorSets . limits =<< getPhysicalDeviceProperties phys
+  liftIO . print $ ("vendorID: 0x" <> showHex vendorID "")
   qIndices <- findQueueFamilyIndices phys surf
   liftIO $ print qIndices
   let queueFamilyIndices = uniq . modify V.sort $ fmap ($ qIndices) [ graphicsFamily, presentFamily, transferFamily ]
