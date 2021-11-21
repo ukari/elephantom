@@ -155,7 +155,8 @@ import Acquire (Acquire, Cleaner, MonadCleaner, mkAcquire, acquireT, cleanup, co
 
 import Elephantom.Renderer.RendererException
 
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath ((</>), takeDirectory, takeFileName, equalFilePath, makeRelative, normalise)
+import System.Directory (canonicalizePath)
 import System.Environment (getProgName, getExecutablePath)
 import Paths_elephantom (getDataFileName, getBinDir, getDataDir, getSysconfDir)
 
@@ -206,11 +207,17 @@ type App sig m = ( Has (State AppConfig) sig m
                  , MonadIO m
                  )
 
+-- todo
+-- make a search list for data and log which in use
 detectAppConfig :: ExecuteEnviornment -> IO AppConfig
 detectAppConfig (ExecuteEnviornment executableDirectory Exe) = do
   let binPath = executableDirectory
   let basePath = takeDirectory binPath
-  let dataPath = basePath </> "data"
+  binInstallPath <- getBinDir
+  dataInstallPath <- getDataDir
+  relBinPath <- canonicalizePath binPath
+  relBinInstallPath <- canonicalizePath binInstallPath
+  let dataPath = if relBinPath `equalFilePath` relBinInstallPath then dataInstallPath else basePath </> "data"
   pure AppConfig { .. }
 detectAppConfig (ExecuteEnviornment _ Ghci) = do
   binPath <- getBinDir
@@ -750,3 +757,20 @@ withTextureShaderStages device = do
   |]
   Lib.createShaderResource device [ vertCode, fragCode ]
 
+-- withContoursShaderStages :: MonadIO m => Device -> m (ShaderResource, V.Vector ShaderModule)
+-- withContoursShaderStages = do
+--   let vertCode = [vert|
+--   #version 450
+--   #extension GL_ARB_separate_shader_objects : enable
+--   layout(set = 2, binding = 0) uniform UniformBufferObject {
+--     mat4 model;
+--     mat4 view;
+--     mat4 proj;
+--   } ubo;
+
+
+--   |]
+--   let fragCode = [frag|
+  
+--   |]
+--   Lib.createShaderResource device [ vertCode, fragCode ]
