@@ -1,3 +1,7 @@
+{-# LANGUAGE QuantifiedConstraints #-}
+
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE KindSignatures #-}
 -- record field
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -13,6 +17,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- sugar
 --{-# LANGUAGE PatternSynonyms #-}
@@ -23,10 +28,7 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Lib
-    ( someFunc
-    , testfont
-    ) where
+module Lib where
 
 import qualified SDL
 import qualified SDL.Video.Vulkan as SDL
@@ -47,7 +49,7 @@ import Codec.Picture (PixelRGBA8 (..), readImage, imageData)
 import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
 import Graphics.Rasterific.Texture (uniformTexture)
-import Graphics.Text.TrueType (loadFontFile, decodeFont, descriptorOf)
+import Graphics.Text.TrueType (RawGlyph (..), Font, loadFontFile, decodeFont, descriptorOf, _descriptorFamilyName, getCharacterGlyphsAndMetrics)
 
 import Language.Haskell.TH hiding (location)
 import Type.Reflection (SomeTypeRep, splitApps, typeOf)
@@ -65,13 +67,17 @@ import qualified Linear
 import Data.String (IsString)
 import Data.Word (Word32)
 import Data.Text (Text)
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 import Data.ByteString (packCString, pack)
 import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import Data.Traversable (traverse)
 import Data.Bits ((.&.), (.|.), shift, zeroBits)
 import Data.Vector ((!), (!?), uniq, modify)
 import qualified Data.Vector.Storable as VS
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as VU
 --import Data.Vector.Algorithms.Intro (sort)
 import qualified Data.Vector.Algorithms.Intro as V
 --import Data.Set (Set, union)
@@ -114,7 +120,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Trans.Resource (MonadResource, ResourceT, ReleaseKey, runResourceT, allocate, allocate_, release, register, unprotect, liftResourceT, resourceForkIO, transResourceT)
 import Control.Monad.Fix (MonadFix)
-import Control.Exception (Exception (..), SomeException (..), AsyncException (UserInterrupt), throw, handleJust, try, catch)
+import Control.Exception (Exception (..), SomeException (..), AsyncException (UserInterrupt), throw, handleJust, try)
 import qualified Control.Exception as Ex
 import Control.Concurrent (MVar, newMVar, readMVar, forkIO, forkOS, threadDelay, myThreadId)
 import System.IO.Unsafe (unsafeInterleaveIO, unsafePerformIO)
@@ -128,6 +134,9 @@ import Control.Effect.Lift (Lift (..))
 import Control.Effect.Writer (Writer (..), tell, run)
 import Control.Effect.Error (Error)
 import Control.Effect.Throw (Throw (..), throwError, liftEither)
+import Control.Effect.Catch (Catch (..), catchError)
+--import Control.Carrier.State.IORef (runState)
+import Control.Effect.Exception (throwIO, catch)
 
 import Control.Monad.Logger (runStdoutLoggingT)
 -- import Control.Concurrent
@@ -146,8 +155,9 @@ import Acquire (Acquire, Cleaner, MonadCleaner, mkAcquire, acquireT, cleanup, co
 
 import Elephantom.Renderer.RendererException
 
-import System.Environment (getExecutablePath)
-import Paths_elephantom (getDataFileName)
+import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.Environment (getProgName, getExecutablePath)
+import Paths_elephantom (getDataFileName, getBinDir, getDataDir, getSysconfDir)
 
 testEff :: IO (Either RendererException ())
 testEff = runError $ testThrowException
@@ -163,19 +173,91 @@ testThrowException = do
   x <- throwError VulkanDeviceNotFound
   return ()
 
-testfont :: IO ()
-testfont = do
-  ep <- getExecutablePath
-  print ep
-  fontfile <- getDataFileName "font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
-  print fontfile
-  res <- loadFontFile fontfile
-  case res of
-    Left e -> print $ "fail to load font " <> e
-    Right font -> print $ ("load font " <>) . show <$> descriptorOf font
-  print "test font"
+data ExecuteEnviornmentType = Ghci | Exe deriving (Show)
 
--- decodeFont "foo测aefasuqqqqqqqqqqqqqqqqqqqqqqqqx试"
+data ExecuteEnviornment = ExecuteEnviornment
+  { executableDirectory :: FilePath
+  , executableType :: ExecuteEnviornmentType
+  } deriving (Show)
+
+checkExecuteEnviornmentType :: String -> String -> ExecuteEnviornmentType
+checkExecuteEnviornmentType "<interactive>" "ghc" = Ghci
+checkExecuteEnviornmentType _ _ = Exe
+
+getEnviornment :: IO ExecuteEnviornment
+getEnviornment = do
+  progName <- getProgName
+  executablePath <- getExecutablePath
+  let executableDirectory = takeDirectory executablePath
+  let executableFileName = takeFileName executablePath
+  let executableType = checkExecuteEnviornmentType progName executableFileName
+  pure ExecuteEnviornment { .. }
+
+getBasePath :: ExecuteEnviornment -> IO FilePath
+getBasePath (ExecuteEnviornment executableDirectory Exe) = pure executableDirectory
+getBasePath (ExecuteEnviornment _ Ghci) = getBinDir
+
+data AppConfig = AppConfig
+  { binPath :: FilePath
+  , dataPath :: FilePath
+  } deriving (Show)
+
+type App sig m = ( Has (State AppConfig) sig m
+                 , MonadIO m
+                 )
+
+detectAppConfig :: ExecuteEnviornment -> IO AppConfig
+detectAppConfig (ExecuteEnviornment executableDirectory Exe) = do
+  let binPath = executableDirectory
+  let basePath = takeDirectory binPath
+  let dataPath = basePath </> "data"
+  pure AppConfig { .. }
+detectAppConfig (ExecuteEnviornment _ Ghci) = do
+  binPath <- getBinDir
+  dataPath <- getDataDir
+  pure AppConfig {..}
+
+runTest2 :: IO ()
+runTest2 = runTestApp
+
+runTestApp :: forall sig m . (Algebra sig m, MonadIO m) => m ()
+runTestApp = do
+  env <- liftIO getEnviornment
+  appConfig <- liftIO $ detectAppConfig env
+  liftIO $ print appConfig
+  evalState appConfig $ testfont
+
+testAppCon :: App sig m => m ()
+testAppCon = do
+  config <- binPath <$> get @AppConfig
+  liftIO $ print config
+  liftIO $ print "hi"
+  pure ()
+
+testfont :: App sig m => m ()
+testfont = do
+  dataBasePath <- dataPath <$> get @AppConfig
+  let fontfile = dataBasePath </> "font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
+  liftIO $ print fontfile
+  res <- liftIO $ loadFontFile fontfile
+  liftIO $ case res of
+    Left e -> print $ "fail to load font " <> e
+    Right font -> do
+      print $ ("load font " <>) . show <$> descriptorOf font
+      loadfont font
+  liftIO $ print "test font"
+
+loadfont :: Font -> IO ()
+loadfont font = do
+  let (code, glyphs) = getCharacterGlyphsAndMetrics font 'B'
+  print code
+  flip mapM glyphs $ \(RawGlyph scales index contours) -> do
+    print $ "scales: " <> show scales
+    print $ "index: " <> show index
+    print $ "contours: " <> show contours
+    print $ "contours dot count: " <> show (VU.length <$> contours)
+
+  pure ()
 
 testRelease :: IO ()
 testRelease = runResourceT $ do
