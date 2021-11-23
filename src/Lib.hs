@@ -1,3 +1,5 @@
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 
 {-# LANGUAGE FlexibleInstances #-}
@@ -49,7 +51,7 @@ import Codec.Picture (PixelRGBA8 (..), readImage, imageData)
 import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
 import Graphics.Rasterific.Texture (uniformTexture)
-import Graphics.Text.TrueType (RawGlyph (..), Font, loadFontFile, decodeFont, descriptorOf, _descriptorFamilyName, getCharacterGlyphsAndMetrics)
+import Graphics.Text.TrueType (RawGlyph (..), Font, loadFontFile, decodeFont, descriptorOf, _descriptorFamilyName, getCharacterGlyphsAndMetrics, unitsPerEm)
 
 import Language.Haskell.TH hiding (location)
 import Type.Reflection (SomeTypeRep, splitApps, typeOf)
@@ -66,6 +68,7 @@ import qualified Linear
 --import Data.Acquire (Acquire, mkAcquire)
 import Data.String (IsString)
 import Data.Word (Word32)
+import Data.Int (Int16)
 import Data.Text (Text)
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
@@ -256,7 +259,8 @@ testfont = do
 
 loadfont :: Font -> IO ()
 loadfont font = do
-  let (code, glyphs) = getCharacterGlyphsAndMetrics font 'B'
+  print $ "units per em: " <> show (unitsPerEm font)
+  let (code, glyphs) = getCharacterGlyphsAndMetrics font 'J'
   print code
   flip mapM glyphs $ \(RawGlyph scales index contours) -> do
     print $ "scales: " <> show scales
@@ -676,6 +680,163 @@ loadTexture Application { width, height } allocator phys device queueFamilyIndic
     , pipelineResource = pipelineRes
     }
 
+bContour :: [ VU.Vector (Int16, Int16) ]
+bContour = [[(99,0),(99,328),(99,656),(192,656),(285,656),(335,656),(376,647),(418,638),(447,619),(477,600),(493,569),(510,539),(510,496),(510,447),(482,407),(454,368),(395,353),(395,351),(395,349),(467,338),(507,299),(547,260),(547,192),(547,144),(529,108),(511,72),(478,48),(446,24),(400,12),(355,0),(300,0),(199,0),(99,0)],[(182,380),(226,380),(271,380),(355,380),(391,407),(428,434),(428,489),(428,543),(389,564),(351,586),(275,586),(228,586),(182,586),(182,483),(182,380)],[(182,70),(235,70),(288,70),(373,70),(419,99),(465,129),(465,196),(465,257),(420,283),(375,310),(288,310),(235,310),(182,310),(182,190),(182,70)]]
+
+flatContours :: [ VU.Vector (Int16, Int16) ] -> VS.Vector Contour 
+flatContours = VS.concat . map (`flatClosedContour` [])
+  where
+    flatClosedContour :: VU.Vector (Int16, Int16) -> [ Contour ] -> VS.Vector Contour
+    flatClosedContour ((<= 1) . VU.length -> True) acc = VS.fromList . reverse $ acc
+    flatClosedContour rest acc = flatClosedContour (VU.drop 2 rest) ((toContour . VU.toList . VU.take 3 $ rest) : acc)
+    toContour :: [ (Int16, Int16) ] -> Contour
+    toContour [ p1, p2, p3 ] = Contour (uncurry V2 p1) (uncurry V2 p2) (uncurry V2 p3)
+    toContour _ = error "invalid points number for contour"
+
+loadContours :: (MonadIO m, MonadCleaner m) => Application -> Vma.Allocator -> PhysicalDevice -> Device -> V.Vector Word32 -> QueueResource -> CommandPoolResource -> ShaderResource -> PipelineResource -> m Present
+loadContours Application { width, height } allocator phys device queueFamilyIndices QueueResource {..} CommandPoolResource {..}  textureShaderRes pipelineRes = do
+  liftIO . print . descriptorSetLayouts $ textureShaderRes
+  textureSampler <- Lib.withTextureSampler phys device acquireT
+  textureDescriptorSetResource <- Lib.withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes) acquireT
+  let contours =
+        [] :: VS.Vector Contour
+  (texCoordsBuffer, texCoordsBufferAllocation, _) <- Lib.withBuffer allocator zero
+    { size = fromIntegral $ sizeOf (contours VS.! 0) * VS.length contours
+    , usage = BUFFER_USAGE_VERTEX_BUFFER_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero {
+      Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    } acquireT
+  memCopy allocator texCoordsBufferAllocation contours
+
+  let texIndices = [0, 1, 2, 2, 3, 0] :: VS.Vector Word32
+  (texIndexBuffer, texIndexBufferAllocation, _) <- Lib.withBuffer allocator zero
+    { size = fromIntegral $ sizeOf (texIndices VS.! 0) * VS.length texIndices
+    , usage = BUFFER_USAGE_INDEX_BUFFER_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero {
+      Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    } acquireT
+  memCopy allocator texIndexBufferAllocation texIndices
+  
+  let texUniform = ShaderUniform
+        { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
+        , proj = transpose $ ortho (0) (fromIntegral width) (0) (fromIntegral height) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
+        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (150/2*1) (100/2*1) 0) (axisAngle (V3 0 0 1) ((45+30)/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
+        }
+  (texUniformBuffer, texUniformBufferAllocation, _) <- Lib.withBuffer allocator zero
+    { size = fromIntegral $ 4 * sizeOf (undefined :: ShaderUniform)
+    , usage = BUFFER_USAGE_UNIFORM_BUFFER_BIT -- .|. BUFFER_USAGE_TRANSFER_DST_BIT
+    , sharingMode = chooseSharingMode queueFamilyIndices
+    , queueFamilyIndices = queueFamilyIndices -- ignore when sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_TO_GPU
+    } acquireT
+  memCopy allocator texUniformBufferAllocation (VS.fromList [texUniform, texUniform, texUniform, texUniform]) -- early free
+  let texBufferInfos :: V.Vector DescriptorBufferInfo
+      texBufferInfos =
+        [ zero
+          { buffer = texUniformBuffer
+          , offset = 0
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        , zero
+          { buffer = texUniformBuffer
+          , offset = fromIntegral . (*1) . sizeOf $ (undefined :: ShaderUniform)
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        , zero
+          { buffer = texUniformBuffer
+          , offset = fromIntegral . (*2) . sizeOf $ (undefined :: ShaderUniform)
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        , zero
+          { buffer = texUniformBuffer
+          , offset = fromIntegral . (*3) . sizeOf $ (undefined :: ShaderUniform)
+          , range = fromIntegral . sizeOf $ (undefined :: ShaderUniform)
+          } :: DescriptorBufferInfo
+        ]
+
+  let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 100) $ fill $ rectangle (V2 0 0) 200 100
+  (textureStagingBuffer, textureStagingBufferAllocation, _) <- Lib.withBuffer allocator zero
+    { size = fromIntegral $ (sizeOf . VS.head $ imageData pixels) * VS.length (imageData pixels)
+    , usage = BUFFER_USAGE_TRANSFER_SRC_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_CPU_ONLY
+    } acquireT
+  memCopy allocator textureStagingBufferAllocation (imageData pixels)
+  let textureFormat = FORMAT_R8G8B8A8_SRGB
+  (textureImage, _textureImageAllocation, _) <- Lib.withImage allocator zero
+    { imageType = IMAGE_TYPE_2D
+    , extent = Extent3D 200 100 1
+    , mipLevels = 1
+    , arrayLayers = 1
+    , format = textureFormat
+    , tiling = IMAGE_TILING_OPTIMAL
+    , initialLayout = IMAGE_LAYOUT_UNDEFINED
+    , usage = IMAGE_USAGE_TRANSFER_DST_BIT .|. IMAGE_USAGE_SAMPLED_BIT -- when use staging buffer, VK_IMAGE_USAGE_TRANSFER_DST_BIT is necessary. VUID-VkImageMemoryBarrier-oldLayout-01213
+    , samples = SAMPLE_COUNT_1_BIT
+    , sharingMode = SHARING_MODE_EXCLUSIVE
+    } zero
+    { Vma.usage = Vma.MEMORY_USAGE_GPU_ONLY
+    } acquireT
+
+  withSingleTimeCommands device transferCommandPool transferQueue $ \cb -> do
+    transitionImageLayout cb textureImage IMAGE_LAYOUT_UNDEFINED IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    cmdCopyBufferToImage cb textureStagingBuffer textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+      [ zero
+        { bufferOffset = 0
+        , bufferRowLength = 0
+        , bufferImageHeight = 0
+        , imageSubresource =  zero
+          { aspectMask = IMAGE_ASPECT_COLOR_BIT
+          , mipLevel = 0
+          , baseArrayLayer = 0
+          , layerCount = 1
+          }
+        , imageOffset = Offset3D 0 0 0
+        , imageExtent = Extent3D (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) 1
+        } :: BufferImageCopy
+      ]
+    transitionImageLayout cb textureImage IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+
+  textureImageView <- Lib.withImageView device textureFormat textureImage acquireT
+  updateDescriptorSets device
+    [ SomeStruct $ zero
+      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 2
+      , dstBinding = 0
+      , dstArrayElement = 0
+      , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
+      , descriptorCount = fromIntegral . length $ texBufferInfos
+      , bufferInfo = texBufferInfos
+      , imageInfo = []
+      , texelBufferView = []
+      }
+    , SomeStruct $ zero
+      { dstSet = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource) ! 2
+      , dstBinding = 1
+      , dstArrayElement = 0
+      , descriptorType = DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+      , descriptorCount = 1
+      , imageInfo =
+        [ zero
+          { imageLayout = IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+          , imageView = textureImageView
+          , sampler = textureSampler
+          }
+        ]
+      }
+    ] []
+  pure Present
+    { vertexBuffers = [ texCoordsBuffer ]
+    , indexBuffer = texIndexBuffer
+    , descriptorSets = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)
+    , drawSize = fromIntegral . VS.length $ texIndices
+    , pipelineResource = pipelineRes
+    }
+  
+
 withShaderStages :: MonadIO m => Device -> m (ShaderResource, V.Vector ShaderModule)
 withShaderStages device = do
   let vertCode = [vert|
@@ -757,20 +918,44 @@ withTextureShaderStages device = do
   |]
   Lib.createShaderResource device [ vertCode, fragCode ]
 
--- withContoursShaderStages :: MonadIO m => Device -> m (ShaderResource, V.Vector ShaderModule)
--- withContoursShaderStages = do
---   let vertCode = [vert|
---   #version 450
---   #extension GL_ARB_separate_shader_objects : enable
---   layout(set = 2, binding = 0) uniform UniformBufferObject {
---     mat4 model;
---     mat4 view;
---     mat4 proj;
---   } ubo;
+withContoursShaderStages :: MonadIO m => Device -> m (ShaderResource, V.Vector ShaderModule)
+withContoursShaderStages device = do
+  let vertCode = [vert|
+  #version 450
+  #extension GL_ARB_separate_shader_objects : enable
+  layout(set = 2, binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+  } ubo;
+
+  layout(location = 0) in vec2 position;
+  layout(location = 1) in vec4 color;
+  layout(location = 2) in vec2 texCoord;
+
+  layout(location = 0) out vec4 fragColor;
+  layout(location = 1) out vec2 fragTexCoord;
+
+  void main() {
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(position, 0.0, 1.0);
+    fragColor = color;
+    fragTexCoord = texCoord;
+  }
+
+  |]
+  let fragCode = [frag|
+  #version 450
+
+  #extension GL_ARB_separate_shader_objects : enable
 
 
---   |]
---   let fragCode = [frag|
-  
---   |]
---   Lib.createShaderResource device [ vertCode, fragCode ]
+  layout(location = 0) in vec4 fragColor;
+  layout(location = 1) in vec2 fragTexCoord;
+
+  layout(location = 0) out vec4 outColor;
+
+  void main() {
+    outColor = vec4(1.0, 1.0, 1.0, 0.0);
+  }
+  |]
+  Lib.createShaderResource device [ vertCode, fragCode ]

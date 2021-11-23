@@ -15,10 +15,13 @@ module Shader
   ( ShaderUniform (..)
   , ShaderInputVertex (..)
   , Texture (..)
+  , Contour (..)
   )
   where
 
 import Linear (V2 (..), V4 (..), M44)
+
+import Data.Int (Int16)
 
 import GHC.Generics (Generic)
 import Foreign.Storable.Generic (GStorable)
@@ -47,3 +50,11 @@ data Texture = Texture
   } deriving (Generic, GStorable)
 
 makeOffset ''Texture
+
+data Contour = Contour
+  { p1 :: !(V2 Int16)
+  , p2 :: !(V2 Int16)
+  , p3 :: !(V2 Int16)
+  } deriving (Generic, GStorable, Show)
+
+makeOffset ''Contour
