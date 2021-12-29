@@ -45,7 +45,7 @@ createDescriptorSetResource device descriptorSetLayouts descriptorSetLayoutCreat
   -- https://www.reddit.com/r/vulkan/comments/clffjm/descriptorpool_maxsets_how_does_this_work_if_you/
   -- https://www.reddit.com/r/vulkan/comments/aij7zp/there_is_a_good_technique_to_update_a_vertex/
   let descriptorPoolCreateInfo = makeDescriptorPoolCreateInfo (fromIntegral . length $ descriptorSetLayouts) descriptorSetLayoutCreateInfos
-  descriptorPool <- createDescriptorPool device descriptorPoolCreateInfo Nothing 
+  descriptorPool <- createDescriptorPool device descriptorPoolCreateInfo Nothing
   descriptorSets <- allocateDescriptorSets device zero
     { descriptorPool = descriptorPool
     , setLayouts = descriptorSetLayouts

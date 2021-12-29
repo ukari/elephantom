@@ -6,4 +6,4 @@ import Conv
 main :: IO ()
 main = someFunc
 -- main = tcount $ testimnn
---main = testfont
+-- main = runTestApp

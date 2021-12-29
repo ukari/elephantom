@@ -1,5 +1,6 @@
 module Elephantom.Renderer
   ( module Elephantom.Renderer.ApplicationInfo
+  , module Elephantom.Renderer.Buffer
   , module Elephantom.Renderer.Command
   , module Elephantom.Renderer.CommandBuffer
   , module Elephantom.Renderer.CommandPool
@@ -7,6 +8,7 @@ module Elephantom.Renderer
   , module Elephantom.Renderer.Device
   , module Elephantom.Renderer.Frame
   , module Elephantom.Renderer.Framebuffer
+  , module Elephantom.Renderer.Image
   , module Elephantom.Renderer.ImageLayout
   , module Elephantom.Renderer.ImageView
   , module Elephantom.Renderer.Inst
@@ -29,6 +31,7 @@ module Elephantom.Renderer
   ) where
 
 import Elephantom.Renderer.ApplicationInfo
+import Elephantom.Renderer.Buffer
 import Elephantom.Renderer.Command
 import Elephantom.Renderer.CommandBuffer
 import Elephantom.Renderer.CommandPool
@@ -36,6 +39,7 @@ import Elephantom.Renderer.Descriptor
 import Elephantom.Renderer.Device
 import Elephantom.Renderer.Frame
 import Elephantom.Renderer.Framebuffer
+import Elephantom.Renderer.Image
 import Elephantom.Renderer.ImageLayout
 import Elephantom.Renderer.ImageView
 import Elephantom.Renderer.Inst

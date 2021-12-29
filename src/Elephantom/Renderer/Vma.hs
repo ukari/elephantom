@@ -8,7 +8,7 @@
 module Elephantom.Renderer.Vma
   ( withAllocator
   , memCopy
-  , memCopyU
+  , memCopyV
   , withBuffer
   , withImage
   ) where
@@ -38,18 +38,18 @@ withAllocator phys device inst = Vma.withAllocator zero
   , Vma.vulkanApiVersion = apiVersion (appInfo :: ApplicationInfo)
   }
 
-memCopy :: forall a m . (Storable a, MonadIO m) => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> m ()
+memCopy :: forall a m . (Storable a, MonadIO m) => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> a -> m ()
 memCopy allocator memAllocation datas = do
-  bufferMemoryPtr <- Vma.mapMemory allocator memAllocation
-  liftIO $ VS.unsafeWith datas $ \ptr ->
-    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral (sizeOf (undefined :: a)) * VS.length datas
-  Vma.unmapMemory allocator memAllocation
-
-memCopyU :: forall a m . (Storable a, MonadIO m) => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> a -> m ()
-memCopyU allocator memAllocation datas = do
   bufferMemoryPtr <- Vma.mapMemory allocator memAllocation
   liftIO $ with datas $ \ptr ->
     copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral . sizeOf $ (undefined :: a)
+  Vma.unmapMemory allocator memAllocation
+
+memCopyV :: forall a m . (Storable a, MonadIO m) => Vma.Allocator -> "deviceMemory" ::: Vma.Allocation -> VS.Vector a -> m ()
+memCopyV allocator memAllocation datas = do
+  bufferMemoryPtr <- Vma.mapMemory allocator memAllocation
+  liftIO $ VS.unsafeWith datas $ \ptr ->
+    copyBytes bufferMemoryPtr (castPtr ptr) $ fromIntegral (sizeOf (undefined :: a)) * VS.length datas
   Vma.unmapMemory allocator memAllocation
 
 withBuffer :: (Extendss BufferCreateInfo a, PokeChain a, MonadIO m) => Vma.Allocator -> BufferCreateInfo a -> Vma.AllocationCreateInfo -> Allocator m (Buffer, Vma.Allocation, Vma.AllocationInfo)
