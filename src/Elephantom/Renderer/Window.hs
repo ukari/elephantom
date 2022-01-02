@@ -34,4 +34,3 @@ destroyWindow = SDL.destroyWindow
 
 withWindow :: MonadIO m => Text -> Int -> Int -> Allocator m SDL.Window
 withWindow title width height allocate = allocate (createWindow title width height) destroyWindow
-

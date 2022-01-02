@@ -153,6 +153,7 @@ import Offset
 import qualified SpirV
 import Elephantom.Renderer
 import qualified Elephantom.Renderer as Lib
+import qualified Elephantom.Renderer.Wrapper as Lib
 import Elephantom.Application (Application (..), defaultApplication)
 import Acquire (Acquire, Cleaner, MonadCleaner, mkAcquire, acquireT, cleanup, collect)
 

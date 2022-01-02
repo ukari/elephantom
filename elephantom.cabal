@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d8efc437619b97890ddf4283c118e5690f9ec145d17fad311a851513724b2e24
+-- hash: 3c98d4945fa5f25c4ffe260264923653e3979b51dfaa6083de26bcccf2aca816
 
 name:           elephantom
 version:        0.1.0.0
@@ -34,12 +34,9 @@ library
       Acquire
       Conv
       Elephantom.Application
-      Elephantom.Graphics.Rectangle
-      Elephantom.Graphics.Text
       Elephantom.Renderer
       Elephantom.Renderer.Allocator
       Elephantom.Renderer.ApplicationInfo
-      Elephantom.Renderer.Buffer
       Elephantom.Renderer.Command
       Elephantom.Renderer.CommandBuffer
       Elephantom.Renderer.CommandPool
@@ -47,7 +44,6 @@ library
       Elephantom.Renderer.Device
       Elephantom.Renderer.Frame
       Elephantom.Renderer.Framebuffer
-      Elephantom.Renderer.Image
       Elephantom.Renderer.ImageLayout
       Elephantom.Renderer.ImageView
       Elephantom.Renderer.Inst
@@ -66,7 +62,14 @@ library
       Elephantom.Renderer.Util
       Elephantom.Renderer.Viewport
       Elephantom.Renderer.Vma
+      Elephantom.Renderer.VmaAllocator
       Elephantom.Renderer.Window
+      Elephantom.Renderer.Wrapper
+      Elephantom.Renderer.Wrapper.Allocate
+      Elephantom.Renderer.Wrapper.Buffer
+      Elephantom.Renderer.Wrapper.DescriptorSet
+      Elephantom.Renderer.Wrapper.Image
+      Elephantom.Renderer.Wrapper.TestAllocator
       Event
       Event.Input
       Event.InputEvent

@@ -90,6 +90,7 @@ queryPhysicalDevice device = liftA2 (,) vendorID (const device) <$> getPhysicalD
 preferPhysicalDevices :: V.Vector (Word32, PhysicalDevice) -> V.Vector (Word32, PhysicalDevice) 
 preferPhysicalDevices = V.fromList . sortBy (gpuSort `on` fst) . V.toList
 
+gpuSort :: Word32 -> Word32 -> Ordering
 gpuSort (Hardware _) _ = LT
 gpuSort (Software _) (Unknown _) = LT
 gpuSort _ _ = GT

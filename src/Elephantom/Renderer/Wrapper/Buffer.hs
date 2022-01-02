@@ -2,10 +2,11 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedLists #-}
 
-module Elephantom.Renderer.Buffer
+module Elephantom.Renderer.Wrapper.Buffer
   ( withVertexBuffer
   , withIndexBuffer
   , withTransferBuffer
@@ -26,13 +27,14 @@ import Control.Monad.IO.Class (MonadIO)
 import Elephantom.Renderer.Swapchain (chooseSharingMode)
 import Elephantom.Renderer.Vma (withBuffer, memCopy, memCopyV)
 
-import Elephantom.Renderer.Allocator (VmaAllocator)
+import Elephantom.Renderer.Wrapper.Allocate (Allocate)
 
 withVertexBuffer :: forall a m .
                     (Storable a, MonadIO m)
                  => Vma.Allocator
                  -> VS.Vector a
-                 -> VmaAllocator m Buffer
+                 -> Allocate m
+                 -> m Buffer
 withVertexBuffer allocator vertices allocate = do
   (verticesBuffer, verticesBufferAllocation, _) <- withBuffer allocator zero
     { size = fromIntegral $ sizeOf (undefined :: a) * VS.length vertices
@@ -48,7 +50,8 @@ withIndexBuffer :: forall a m .
                    (Storable a, MonadIO m)
                 => Vma.Allocator
                 -> VS.Vector a
-                -> VmaAllocator m Buffer
+                -> Allocate m
+                -> m Buffer
 withIndexBuffer allocator indices allocate = do
   (indicesBuffer, indicesBufferAllocation, _) <- withBuffer allocator zero
     { size = fromIntegral $ sizeOf (undefined :: a) * VS.length indices
@@ -64,7 +67,8 @@ withTransferBuffer :: forall a m .
                       (Storable a, MonadIO m)
                    => Vma.Allocator
                    -> VS.Vector a
-                   -> VmaAllocator m Buffer
+                   -> Allocate m
+                   -> m Buffer
 withTransferBuffer allocator transData allocate = do
   (stagingBuffer, stagingBufferAllocation, _) <- withBuffer allocator zero
     { size = fromIntegral $ sizeOf (undefined :: a) * VS.length transData
@@ -81,10 +85,8 @@ withUniformBuffer :: forall a m .
                   => Vma.Allocator
                   -> "queueFamilyIndices" ::: V.Vector Word32 
                   -> a
-                  -> forall r .
-                    MonadIO r
-                    => (m (Buffer, Vma.Allocation, Vma.AllocationInfo) -> ((Buffer, Vma.Allocation, Vma.AllocationInfo) -> m ()) -> r (Buffer, Vma.Allocation, Vma.AllocationInfo))
-                  -> r (V.Vector DescriptorBufferInfo)
+                  -> Allocate m
+                  -> m (V.Vector DescriptorBufferInfo)
 withUniformBuffer allocator familyIndices uniformData allocate = do
   (uniformBuffer, uniformBufferAllocation, _) <- withBuffer allocator zero
     { size = fromIntegral $ sizeOf (undefined :: a)

@@ -1,9 +1,11 @@
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 
 {-# LANGUAGE OverloadedLists #-}
 
-module Elephantom.Renderer.Image
+module Elephantom.Renderer.Wrapper.Image
   ( withImageSampled
   ) where
 
@@ -18,8 +20,7 @@ import Control.Monad.IO.Class (MonadIO)
 import Elephantom.Renderer.Command (withSingleTimeCommands)
 import Elephantom.Renderer.ImageLayout (transitionImageLayout)
 import Elephantom.Renderer.Vma (withImage)
-
-import Elephantom.Renderer.Allocator (VmaAllocator)
+import Elephantom.Renderer.Wrapper.Allocate (Allocate)
 
 withImageSampled :: MonadIO m
                  => Vma.Allocator
@@ -27,10 +28,11 @@ withImageSampled :: MonadIO m
                  -> CommandPool
                  -> Queue
                  -> Format
-                 -> Word32
-                 -> Word32
+                 -> "image width" ::: Word32
+                 -> "image height" ::: Word32
                  -> Buffer
-                 -> VmaAllocator m Image
+                 -> Allocate m
+                 -> m Image
 withImageSampled allocator device transferCommandPool transferQueue textureFormat imageWidth imageHeight stagingBuffer allocate = do
   (textureImage, _textureImageAllocation, _) <- withImage allocator zero
     { imageType = IMAGE_TYPE_2D
