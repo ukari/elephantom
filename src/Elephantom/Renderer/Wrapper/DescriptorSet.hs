@@ -29,8 +29,6 @@ import Elephantom.Renderer.Wrapper.Buffer (withTransferBuffer, withUniformBuffer
 import Elephantom.Renderer.Wrapper.Image (withImageSampled)
 import Elephantom.Renderer.ImageView (withImageView)
 import Elephantom.Renderer.Sampler (withTextureSampler)
-import Elephantom.Renderer.Allocator (Allocator)
-import Elephantom.Renderer.VmaAllocator (VmaAllocator')
 import Elephantom.Renderer.Wrapper.Allocate (Allocate)
 
 withUniformBufferDescriptorSet :: (Storable a, MonadIO m)
