@@ -52,6 +52,8 @@ data Texture = Texture
 
 makeOffset ''Texture
 
+-- | TriQuadVertex
+-- not support gradient in full color range
 data TriQuadVertex = TriQuadVertex
   { position :: !(V2 Float)
   , color :: !(V4 Float)
