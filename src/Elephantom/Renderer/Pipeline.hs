@@ -86,8 +86,8 @@ defaultPipelineCreateInfo = zero
   , basePipelineHandle = zero
   }
 
-createPipelineResource :: MonadIO m => Device -> RenderPass -> ShaderResource -> m PipelineResource
-createPipelineResource device renderPass ShaderResource {..} = do
+createPipelineResource :: MonadIO m => Device -> RenderPass -> ShaderResource -> GraphicsPipelineCreateInfo '[] -> m PipelineResource
+createPipelineResource device renderPass ShaderResource {..} pipelineCreateInfo = do
   -- https://stackoverflow.com/questions/56928041/what-is-the-purpose-of-multiple-setlayoutcounts-of-vulkan-vkpipelinelayoutcreate
   -- https://vulkan.lunarg.com/doc/view/1.2.135.0/linux/tutorial/html/08-init_pipeline_layout.html
   pipelineLayout <- Vulkan.createPipelineLayout device zero
@@ -95,7 +95,7 @@ createPipelineResource device renderPass ShaderResource {..} = do
     } Nothing
   liftIO $ print pipelineLayout
   (_result, pipelines) <- Vulkan.createGraphicsPipelines device zero
-    [ SomeStruct $ defaultPipelineCreateInfo
+    [ SomeStruct $ pipelineCreateInfo
       { stages = shaderStages
       , vertexInputState = vertexInputState
       , layout = pipelineLayout
@@ -110,5 +110,5 @@ destroyPipelineResource device PipelineResource {..} = do
   Vulkan.destroyPipeline device pipeline Nothing
   Vulkan.destroyPipelineLayout device pipelineLayout Nothing
 
-withPipelineResource :: MonadIO m => Device -> RenderPass -> ShaderResource -> Allocator m PipelineResource
-withPipelineResource device renderPass shaderResource allocate = allocate (createPipelineResource device renderPass shaderResource) (destroyPipelineResource device)
+withPipelineResource :: MonadIO m => Device -> RenderPass -> ShaderResource -> GraphicsPipelineCreateInfo '[] -> Allocator m PipelineResource
+withPipelineResource device renderPass shaderResource pipelineCreateInfo allocate = allocate (createPipelineResource device renderPass shaderResource pipelineCreateInfo) (destroyPipelineResource device)

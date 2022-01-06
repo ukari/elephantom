@@ -435,20 +435,20 @@ someFunc = runResourceT $ do
 
   (shaderRes, shaderModules) <- withShaderStages device
   liftIO . print $ shaderModules
-  pipelineRes <- snd <$> Lib.withPipelineResource device renderPass shaderRes allocate
+  pipelineRes <- snd <$> Lib.withPipelineResource device renderPass shaderRes defaultPipelineCreateInfo allocate
   mapM_ (Lib.destroyShaderModule device) shaderModules
   (triangleCleaner, trianglePresent) <- liftIO . collect $ loadTriangle application allocator device queueFamilyIndices shaderRes pipelineRes
   Lib.destroyShaderResource device shaderRes
   
   (textureShaderRes, textureShaderModules) <- Lib.withTextureShaderStages device
-  texturePipelineRes <- snd <$> Lib.withPipelineResource device renderPass textureShaderRes allocate
+  texturePipelineRes <- snd <$> Lib.withPipelineResource device renderPass textureShaderRes defaultPipelineCreateInfo allocate
   liftIO . print $ textureShaderModules
   mapM_ (Lib.destroyShaderModule device) textureShaderModules
   (textureCleaner, texturePresent) <- liftIO . collect $ loadTexture application allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   Lib.destroyShaderResource device textureShaderRes
 
   (contoursShaderRes, contoursShaderModules) <- Lib.withContoursShaderStages device
-  contoursPipelineRes <- snd <$> Lib.withPipelineResource device renderPass contoursShaderRes allocate
+  contoursPipelineRes <- snd <$> Lib.withPipelineResource device renderPass contoursShaderRes defaultPipelineCreateInfo {} allocate
   mapM_ (Lib.destroyShaderModule device) contoursShaderModules
   (contoursCleaner, contoursPresent) <- liftIO . collect $ loadContours application allocator phys device queueFamilyIndices queueRes commandPoolRes contoursShaderRes contoursPipelineRes
   Lib.destroyShaderResource device contoursShaderRes
