@@ -439,25 +439,25 @@ someFunc = runResourceT $ do
   mapM_ (Lib.destroyShaderModule device) shaderModules
   (triangleCleaner, trianglePresent) <- liftIO . collect $ loadTriangle application allocator device queueFamilyIndices shaderRes pipelineRes
   Lib.destroyShaderResource device shaderRes
-  
+
   (textureShaderRes, textureShaderModules) <- Lib.withTextureShaderStages device
   texturePipelineRes <- snd <$> Lib.withPipelineResource device renderPass textureShaderRes defaultPipelineCreateInfo allocate
   liftIO . print $ textureShaderModules
   mapM_ (Lib.destroyShaderModule device) textureShaderModules
   (textureCleaner, texturePresent) <- liftIO . collect $ loadTexture application allocator phys device queueFamilyIndices queueRes commandPoolRes textureShaderRes texturePipelineRes
   Lib.destroyShaderResource device textureShaderRes
-
+  
   (contoursShaderRes, contoursShaderModules) <- Lib.withContoursShaderStages device
-  contoursPipelineRes <- snd <$> Lib.withPipelineResource device renderPass contoursShaderRes defaultPipelineCreateInfo {} allocate
+  contoursPipelineRes <- snd <$> Lib.withPipelineResource device renderPass contoursShaderRes defaultPipelineCreateInfo allocate
   mapM_ (Lib.destroyShaderModule device) contoursShaderModules
   (contoursCleaner, contoursPresent) <- liftIO . collect $ loadContours application allocator phys device queueFamilyIndices queueRes commandPoolRes contoursShaderRes contoursPipelineRes
   Lib.destroyShaderResource device contoursShaderRes
   -- resource load end
-  
+
   V2 windowWidth windowHeight <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral windowWidth) (fromIntegral windowHeight)
   swapchainRes@SwapchainResource {..} <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
-  
+
   -- mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
   presentsMVar <- liftIO . newMVar $ [ trianglePresent, texturePresent, contoursPresent ]
   frameSync@FrameSync {..} <- createFrameSync device framebuffers
@@ -711,16 +711,14 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
   textureDescriptorSetResource <- Lib.withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes) acquireT
   let quadw = 200 :: Float
   let quadh = 400 :: Float
-  let triquadVertices = [ TriQuadVertex (V2 0 0) (V4 1 1 1 1)
-                      , TriQuadVertex (V2 (quadw * 1) 0) (V4 0 0 0 1)
-                      , TriQuadVertex (V2 0 (quadh * 1)) (V4 1 1 1 1)
-                      ] :: VS.Vector TriQuadVertex
+  let triquadVertices = [ QuadVertex (V2 0 0) (V4 1 1 1 1)
+                      , QuadVertex (V2 quadw 0) (V4 0 0 0 1)
+                      , QuadVertex (V2 quadw quadh) (V4 1 1 1 1)
+                      , QuadVertex (V2 0 quadh) (V4 0 0 0 1)
+                      ] :: VS.Vector QuadVertex
   triquadVerticesBuffer <- Lib.withVertexBuffer allocator triquadVertices acquireT
 
-  let contours = flatContours bContours :: VS.Vector Contour
-  contoursBuffer <- Lib.withVertexBuffer allocator contours acquireT
-
-  let texIndices = [0, 1, 2] :: VS.Vector Word32
+  let texIndices = [ 0, 1, 2, 2, 3, 0 ] :: VS.Vector Word32
   indicesBuffer <- Lib.withIndexBuffer allocator texIndices acquireT
 
   let texUniform = ShaderUniform
@@ -729,19 +727,22 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
         , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (1) (1) 0) (axisAngle (V3 0 0 1) ((0)/360*2*pi)) !*! (m33_to_m44 . scaled $ 1)
         }
 
-  texBufferWriteDescriptorSet <- Lib.withUniformBufferDescriptorSet allocator queueFamilyIndices textureDescriptorSetResource 2 0 texUniform acquireT
-  liftIO $ print $ "here"
+  texBufferWriteDescriptorSet <- Lib.withUniformBufferDescriptorSet allocator queueFamilyIndices textureDescriptorSetResource 0 0 texUniform acquireT
+
   let textureFormat = FORMAT_R8G8B8A8_SRGB
   let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 100) $ fill $ rectangle (V2 0 0) 200 100
 
   -- imageWriteDescriptorSet <- Lib.withCombinedImageSamplerDescriptorSet allocator phys device queueRes commandPoolRes textureDescriptorSetResource 2 1 textureFormat (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) (imageData pixels) acquireT
-  
+  let contoursTexelFormat = FORMAT_R16G16B16_UINT
+  let contours = flatContours bContours :: VS.Vector Contour
+  samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat contours acquireT
+
   updateDescriptorSets device
     [ texBufferWriteDescriptorSet
   --  , imageWriteDescriptorSet
+    , samplerBufferWriteDescriptorSet
     ] []
 
-  liftIO $ print $ "here2"
   pure Present
     { vertexBuffers = [ triquadVerticesBuffer ]
     , indexBuffer = indicesBuffer
@@ -836,7 +837,7 @@ withContoursShaderStages device = do
   let vertCode = [vert|
   #version 460 core
   #extension GL_ARB_separate_shader_objects : enable
-  layout(set = 2, binding = 0) uniform UniformBufferObject {
+  layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
@@ -858,6 +859,8 @@ withContoursShaderStages device = do
 
   #extension GL_ARB_separate_shader_objects : enable
 
+  layout(set = 0, binding = 1) uniform samplerBuffer contours;
+
   layout(location = 0) in vec4 fragColor;
 
   layout(location = 0) out vec4 outColor;
@@ -866,7 +869,6 @@ withContoursShaderStages device = do
     vec2 cur = gl_FragCoord.xy;
     for (int i = 0; i < 10; i++) {
       int offset = i;
-
     }
     outColor = fragColor;
   }

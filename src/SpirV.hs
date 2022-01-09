@@ -137,11 +137,37 @@ instance ToJSON Texture where
   --   <> "array" .= array
   --   )
 
+data SeparateImage = SeparateImage
+  { type' :: SeparateImageDescriptorType
+  , name :: Text
+  , set :: Int
+  , binding :: Int
+  , array :: Maybe (Vector Int)
+  } deriving (Show, Generic)
+
+instance FromJSON SeparateImage where
+  parseJSON = withObject "separate_images" $ \v -> SeparateImage
+    <$> v .: "type"
+    <*> v .: "name"
+    <*> v .: "set"
+    <*> v .: "binding"
+    <*> v .:? "array"
+
+instance ToJSON SeparateImage where
+  toJSON (SeparateImage type' name set binding array) = object
+    [ "type" .= type'
+    , "name" .= name
+    , "set" .= set
+    , "binding" .= binding
+    , "array" .= array
+    ]
+
 data Reflection = Reflection
   { entryPoints :: Vector EntryPoint
   , inputs :: Maybe (Vector Input)
   , textures :: Maybe (Vector Texture)
   , ubos :: Maybe (Vector Ubo)
+  , separate_images :: Maybe (Vector SeparateImage)
   } deriving (Show, Generic, FromJSON, ToJSON)
 
 test :: MonadIO m => m (Maybe Reflection)
@@ -157,7 +183,7 @@ eitherTest = do
 testInput = Input {type' = Vec2, name = "fragTexCoord", location = 1, array = Nothing}
 
 test0 :: Maybe Reflection
-test0 = Just (Reflection {entryPoints = [EntryPoint {name = "main", mode = Frag}], inputs = Just [Input {type' = Vec2, name = "fragTexCoord", location = 1, array = Nothing},Input {type' = Vec4, name = "fragColor", location = 0, array = Nothing}], textures = Just [Texture {type' = Sampler2D, name = "texSampler", set = 0, binding = 1, array = Just [2]},Texture {type' = Sampler2D, name = "texSampler2", set = 3, binding = 1, array = Nothing}], ubos = Nothing})
+test0 = Just (Reflection {entryPoints = [EntryPoint {name = "main", mode = Frag}], inputs = Just [Input {type' = Vec2, name = "fragTexCoord", location = 1, array = Nothing},Input {type' = Vec4, name = "fragColor", location = 0, array = Nothing}], textures = Just [Texture {type' = Sampler2D, name = "texSampler", set = 0, binding = 1, array = Just [2]},Texture {type' = Sampler2D, name = "texSampler2", set = 3, binding = 1, array = Nothing}], ubos = Nothing, separate_images = Nothing})
 
 test0Encode :: BL.ByteString
 test0Encode = "{\"textures\":[{\"set\":0,\"array\":[2],\"name\":\"texSampler\",\"type\":\"sampler2D\",\"binding\":1},{\"set\":3,\"array\":null,\"name\":\"texSampler2\",\"type\":\"sampler2D\",\"binding\":1}],\"inputs\":[{\"location\":1,\"array\":null,\"name\":\"fragTexCoord\",\"type\":\"vec2\"},{\"location\":0,\"array\":null,\"name\":\"fragColor\",\"type\":\"vec4\"}],\"ubos\":null,\"entryPoints\":[{\"mode\":\"frag\",\"name\":\"main\"}]}"
@@ -319,20 +345,359 @@ makeUboDescriptorSetLayoutBinding :: ShaderStage -> Ubo -> (Int, DescriptorSetLa
 makeUboDescriptorSetLayoutBinding stage Ubo {..} = (set, zero
   { binding = fromIntegral binding
   , descriptorType = DESCRIPTOR_TYPE_UNIFORM_BUFFER
-  , descriptorCount = maybe 1 (fromIntegral . V.sum) array
+  , descriptorCount = maybe 1 (fromIntegral . V.product) array
   , stageFlags = convertStage stage
   })
 
 data TextureDescriptorType
-  = Sampler2D
+  = Buffer
+  | Sampler1D
+  | Sampler1DShadow
+  | Sampler1DArray
+  | Sampler1DArrayShadow
+  | Isampler1D
+  | Isampler1DArray
+  | Usampler1D
+  | Usampler1DArray
+  | Sampler2D
+  | Sampler2DShadow
+  | Sampler2DArray
+  | Sampler2DArrayShadow
+  | Isampler2D
+  | Isampler2DArray
+  | Usampler2D
+  | Usampler2DArray
+  | Sampler2DRect
+  | Sampler2DRectShadow
+  | Isampler2DRect
+  | Usampler2DRect
+  | Sampler2DMS
+  | Isampler2DMS
+  | Usampler2DMS
+  | Sampler2DMSArray
+  | Isampler2DMSArray
+  | Usampler2DMSArray
+  | Sampler3D
+  | Isampler3D
+  | Usampler3D
+  | SamplerCube
+  | SamplerCubeShadow
+  | IsamplerCube
+  | UsamplerCube
+  | SamplerCubeArray
+  | SamplerCubeArrayShadow
+  | IsamplerCubeArray
+  | UsamplerCubeArray
+  | SamplerBuffer
+  | IsamplerBuffer
+  | UsamplerBuffer
+  | Image1D
+  | Iimage1D
+  | Uimage1D
+  | Image1DArray
+  | Iimage1DArray
+  | Uimage1DArray
+  | Image2D
+  | Iimage2D
+  | Uimage2D
+  | Image2DArray
+  | Iimage2DArray
+  | Uimage2DArray
+  | Image2DRect
+  | Iimage2DRect
+  | Uimage2DRect
+  | Image2DMS
+  | Iimage2DMS
+  | Uimage2DMS
+  | Image2DMSArray
+  | Iimage2DMSArray
+  | Uimage2DMSArray  
+  | Image3D
+  | Iimage3D
+  | Uimage3D
+  | ImageCube
+  | IimageCube
+  | UimageCube
+  | ImageCubeArray
+  | IimageCubeArray
+  | UimageCubeArray
+  | ImageBuffer
+  | IimageBuffer
+  | UimageBuffer
+  | Texture1D
+  | Texture1DArray
+  | Itexture1D
+  | Itexture1DArray
+  | Utexture1D
+  | Utexture1DArray
+  | Texture2D
+  | Texture2DArray
+  | Itexture2D
+  | Itexture2DArray
+  | Utexture2D
+  | Utexture2DArray
+  | Texture2DRect
+  | Itexture2DRect
+  | Utexture2DRect
+  | Texture2DMS
+  | Itexture2DMS
+  | Utexture2DMS
+  | Texture2DMSArray
+  | Itexture2DMSArray
+  | Utexture2DMSArray
+  | Texture3D
+  | Itexture3D
+  | Utexture3D
+  | TextureCube
+  | ItextureCube
+  | UtextureCube
+  | TextureCubeArray
+  | ItextureCubeArray
+  | UtextureCubeArray
+  | Sampler
+  | SamplerShadow
+  | SubpassInput
+  | IsubpassInput
+  | UsubpassInput
+  | SubpassInputMS
+  | IsubpassInputMS
+  | UsubpassInputMS
   deriving (Show)
 
 instance Convert TextureDescriptorType where
   maybeFrom = \case
+    "buffer" -> Just Buffer
+    "sampler1D" -> Just Sampler1D
+    "sampler1DShadow" -> Just Sampler1DShadow
+    "sampler1DArray" -> Just Sampler1DArray
+    "sampler1DArrayShadow" -> Just Sampler1DArrayShadow
+    "isampler1D" -> Just Isampler1D
+    "isampler1DArray" -> Just Isampler1DArray
+    "usampler1D" -> Just Usampler1D
+    "usampler1DArray" -> Just Usampler1DArray
     "sampler2D" -> Just Sampler2D
+    "sampler2DShadow" -> Just Sampler2DShadow
+    "sampler2DArray" -> Just Sampler2DArray
+    "sampler2DArrayShadow" -> Just Sampler2DArrayShadow
+    "isampler2D" -> Just Isampler2D
+    "isampler2DArray" -> Just Isampler2DArray
+    "usampler2D" -> Just Usampler2D
+    "usampler2DArray" -> Just Usampler2DArray
+    "sampler2DRect" -> Just Sampler2DRect
+    "sampler2DRectShadow" -> Just Sampler2DRectShadow
+    "isampler2DRect" -> Just Isampler2DRect
+    "usampler2DRect" -> Just Usampler2DRect
+    "sampler2DMS" -> Just Sampler2DMS
+    "isampler2DMS" -> Just Isampler2DMS
+    "usampler2DMS" -> Just Usampler2DMS
+    "sampler2DMSArray" -> Just Sampler2DMSArray
+    "isampler2DMSArray" -> Just Isampler2DMSArray
+    "usampler2DMSArray" -> Just Usampler2DMSArray
+    "sampler3D" -> Just Sampler3D
+    "isampler3D" -> Just Isampler3D
+    "usampler3D" -> Just Usampler3D
+    "samplerCube" -> Just SamplerCube
+    "samplerCubeShadow" -> Just SamplerCubeShadow
+    "isamplerCube" -> Just IsamplerCube
+    "usamplerCube" -> Just UsamplerCube
+    "samplerCubeArray" -> Just SamplerCubeArray
+    "samplerCubeArrayShadow" -> Just SamplerCubeArrayShadow
+    "isamplerCubeArray" -> Just IsamplerCubeArray
+    "usamplerCubeArray" -> Just UsamplerCubeArray
+    "samplerBuffer" -> Just SamplerBuffer
+    "isamplerBuffer" -> Just IsamplerBuffer
+    "usamplerBuffer" -> Just UsamplerBuffer
+    "image1D" -> Just Image1D
+    "iimage1D" -> Just Iimage1D
+    "uimage1D" -> Just Uimage1D
+    "image1DArray" -> Just Image1DArray
+    "iimage1DArray" -> Just Iimage1DArray
+    "uimage1DArray" -> Just Uimage1DArray
+    "image2D" -> Just Image2D
+    "iimage2D" -> Just Iimage2D
+    "uimage2D" -> Just Uimage2D
+    "image2DArray" -> Just Image2DArray
+    "iimage2DArray" -> Just Iimage2DArray
+    "uimage2DArray" -> Just Uimage2DArray
+    "image2DRect" -> Just Image2DRect
+    "iimage2DRect" -> Just Iimage2DRect
+    "uimage2DRect" -> Just Uimage2DRect
+    "image2DMS" -> Just Image2DMS
+    "iimage2DMS" -> Just Iimage2DMS
+    "uimage2DMS" -> Just Uimage2DMS
+    "image2DMSArray" -> Just Image2DMSArray
+    "iimage2DMSArray" -> Just Iimage2DMSArray
+    "uimage2DMSArray" -> Just Uimage2DMSArray
+    "image3D" -> Just Image3D
+    "Iimage3D" -> Just Iimage3D
+    "Uimage3D" -> Just Uimage3D
+    "imageCube" -> Just ImageCube
+    "iimageCube" -> Just IimageCube
+    "uimageCube" -> Just UimageCube
+    "imageCubeArray" -> Just ImageCubeArray
+    "iimageCubeArray" -> Just IimageCubeArray
+    "uimageCubeArray" -> Just UimageCubeArray
+    "imageBuffer" -> Just ImageBuffer
+    "iimageBuffer" -> Just IimageBuffer
+    "uimageBuffer" -> Just UimageBuffer
+    "texture1D" -> Just Texture1D
+    "texture1DArray" -> Just Texture1DArray
+    "itexture1D" -> Just Itexture1D
+    "itexture1DArray" -> Just Itexture1DArray
+    "utexture1D" -> Just Utexture1D
+    "utexture1DArray" -> Just Utexture1DArray
+    "texture2D" -> Just Texture2D
+    "texture2DArray" -> Just Texture2DArray
+    "itexture2D" -> Just Itexture2D
+    "itexture2DArray" -> Just Itexture2DArray
+    "utexture2D" -> Just Utexture2D
+    "utexture2DArray" -> Just Utexture2DArray
+    "texture2DRect" -> Just Texture2DRect
+    "itexture2DRect" -> Just Itexture2DRect
+    "utexture2DRect" -> Just Utexture2DRect
+    "texture2DMS" -> Just Texture2DMS
+    "itexture2DMS" -> Just Itexture2DMS
+    "utexture2DMS" -> Just Utexture2DMS
+    "texture2DMSArray" -> Just Texture2DMSArray
+    "itexture2DMSArray" -> Just Itexture2DMSArray
+    "utexture2DMSArray" -> Just Utexture2DMSArray
+    "texture3D" -> Just Texture3D
+    "itexture3D" -> Just Itexture3D
+    "utexture3D" -> Just Utexture3D
+    "textureCube" -> Just TextureCube
+    "itextureCube" -> Just ItextureCube
+    "utextureCube" -> Just UtextureCube
+    "textureCubeArray" -> Just TextureCubeArray
+    "itextureCubeArray" -> Just ItextureCubeArray
+    "utextureCubeArray" -> Just UtextureCubeArray
+    -- "textureBuffer" -> Just TextureBuffer
+    -- "itextureBuffer" -> Just ItextureBuffer
+    -- "utextureBuffer" -> Just UtextureBuffer
+    "sampler" -> Just Sampler
+    "samplerShadow" -> Just SamplerShadow
+    "subpassInput" -> Just SubpassInput
+    "isubpassInput" -> Just IsubpassInput
+    "usubpassInput" -> Just UsubpassInput
+    "subpassInputMS" -> Just SubpassInputMS
+    "IsubpassInputMS" -> Just IsubpassInputMS
+    "UsubpassInputMS" -> Just UsubpassInputMS
     _ -> Nothing
   to = \case
+    Buffer -> "buffer"
+    Sampler1D -> "sampler1D"
+    Sampler1DShadow -> "sampler1DShadow"
+    Sampler1DArray -> "sampler1DArray"
+    Sampler1DArrayShadow -> "sampler1DArrayShadow"
+    Isampler1D -> "isampler1D"
+    Isampler1DArray -> "isampler1DArray"
+    Usampler1D -> "usampler1D"
+    Usampler1DArray -> "usampler1DArray"
     Sampler2D -> "sampler2D"
+    Sampler2DShadow -> "sampler2DShadow"
+    Sampler2DArray -> "sampler2DArray"
+    Sampler2DArrayShadow -> "sampler2DArrayShadow"
+    Isampler2D -> "isampler2D"
+    Isampler2DArray -> "isampler2DArray"
+    Usampler2D -> "usampler2D"
+    Usampler2DArray -> "usampler2DArray"
+    Sampler2DRect -> "sampler2DRect"
+    Sampler2DRectShadow -> "sampler2DRectShadow"
+    Isampler2DRect -> "isampler2DRect"
+    Usampler2DRect -> "usampler2DRect"
+    Sampler2DMS -> "sampler2DMS"
+    Isampler2DMS -> "isampler2DMS"
+    Usampler2DMS -> "usampler2DMS"
+    Sampler2DMSArray -> "sampler2DMSArray"
+    Isampler2DMSArray -> "isampler2DMSArray"
+    Usampler2DMSArray -> "usampler2DMSArray"
+    Sampler3D -> "sampler3D"
+    Isampler3D -> "isampler3D"
+    Usampler3D -> "usampler3D"
+    SamplerCube -> "samplerCube"
+    SamplerCubeShadow -> "samplerCubeShadow"
+    IsamplerCube -> "isamplerCube"
+    UsamplerCube -> "usamplerCube"
+    SamplerCubeArray -> "samplerCubeArray"
+    SamplerCubeArrayShadow -> "samplerCubeArrayShadow"
+    IsamplerCubeArray -> "isamplerCubeArray"
+    UsamplerCubeArray -> "usamplerCubeArray"
+    SamplerBuffer -> "samplerBuffer"
+    IsamplerBuffer -> "isamplerBuffer"
+    UsamplerBuffer -> "usamplerBuffer"
+    Image1D -> "image1D"
+    Iimage1D -> "iimage1D"
+    Uimage1D -> "uimage1D"
+    Image1DArray -> "image1DArray"
+    Iimage1DArray -> "iimage1DArray"
+    Uimage1DArray -> "uimage1DArray"
+    Image2D -> "image2D"
+    Iimage2D -> "iimage2D"
+    Uimage2D -> "uimage2D"
+    Image2DArray -> "image2DArray"
+    Iimage2DArray -> "iimage2DArray"
+    Uimage2DArray -> "uimage2DArray"
+    Image2DRect -> "image2DRect"
+    Iimage2DRect -> "iimage2DRect"
+    Uimage2DRect -> "uimage2DRect"
+    Image2DMS -> "image2DMS"
+    Iimage2DMS -> "iimage2DMS"
+    Uimage2DMS -> "uimage2DMS"
+    Image2DMSArray -> "image2DMSArray"
+    Iimage2DMSArray -> "iimage2DMSArray"
+    Uimage2DMSArray -> "uimage2DMSArray"
+    Image3D -> "image3D"
+    Iimage3D -> "iimage3D"
+    Uimage3D -> "uimage3D"
+    ImageCube -> "imageCube"
+    IimageCube -> "iimageCube"
+    UimageCube -> "uimageCube"
+    ImageCubeArray -> "imageCubeArray"
+    IimageCubeArray -> "iimageCubeArray"
+    UimageCubeArray -> "uimageCubeArray"
+    ImageBuffer -> "imageBuffer"
+    IimageBuffer -> "iimageBuffer"
+    UimageBuffer -> "uimageBuffer"
+    Texture1D -> "texture1D"
+    Texture1DArray -> "texture1DArray"
+    Itexture1D -> "itexture1D"
+    Itexture1DArray -> "itexture1DArray"
+    Utexture1D -> "utexture1D"
+    Utexture1DArray -> "utexture1DArray"
+    Texture2D -> "texture2DArray"
+    Texture2DArray -> "texture2DArray"
+    Itexture2D -> "itexture2D"
+    Itexture2DArray -> "itexture2DArray"
+    Utexture2D -> "utexture2D"
+    Utexture2DArray -> "utexture2DArray"
+    Texture2DRect -> "texture2DRect"
+    Itexture2DRect -> "itexture2DRect"
+    Utexture2DRect -> "utexture2DRect"
+    Texture2DMS -> "texture2DMS"
+    Itexture2DMS -> "itexture2DMS"
+    Utexture2DMS -> "utexture2DMS"
+    Texture2DMSArray -> "texture2DMSArray"
+    Itexture2DMSArray -> "itexture2DMSArray"
+    Utexture2DMSArray -> "utexture2DMSArray"
+    Texture3D -> "texture3D"
+    Itexture3D -> "itexture3D"
+    Utexture3D -> "utexture3D"
+    TextureCube -> "textureCube"
+    ItextureCube -> "itextureCube"
+    UtextureCube -> "utextureCube"
+    TextureCubeArray -> "textureCubeArray"
+    ItextureCubeArray -> "itextureCubeArray"
+    UtextureCubeArray -> "utextureCubeArray"
+    -- TextureBuffer -> "textureBuffer"
+    -- ItextureBuffer -> "itextureBuffer"
+    -- UtextureBuffer -> "utextureBuffer"
+    Sampler -> "sampler"
+    SamplerShadow -> "samplerShadow"
+    SubpassInput -> "subpassInput"
+    IsubpassInput -> "isubpassInput"
+    UsubpassInput -> "usubpassInput"
+    SubpassInputMS -> "subpassInputMS"
+    IsubpassInputMS -> "isubpassInputMS"
+    UsubpassInputMS -> "usubpassInputMS"
 
 instance FromJSON TextureDescriptorType where
   parseJSON = withTextMaybe "type" (maybeFrom @TextureDescriptorType)
@@ -343,13 +708,157 @@ instance ToJSON TextureDescriptorType where
 
 convertTextureDescriptorType :: TextureDescriptorType -> DescriptorType
 convertTextureDescriptorType = \case
+  Buffer -> DESCRIPTOR_TYPE_STORAGE_BUFFER
+  Sampler1D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler1DShadow -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler1DArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler1DArrayShadow -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler1D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler1DArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler1D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler1DArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
   Sampler2D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler2DShadow -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler2DArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler2DArrayShadow -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler2D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler2DArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler2D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler2DArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler2DRect -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler2DRectShadow -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler2DRect -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler2DRect -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler2DMS -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler2DMS -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler2DMS -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler2DMSArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler2DMSArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler2DMSArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Sampler3D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Isampler3D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  Usampler3D -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  SamplerCube -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  SamplerCubeShadow -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  IsamplerCube -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  UsamplerCube -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  SamplerCubeArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  SamplerCubeArrayShadow -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  IsamplerCubeArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  UsamplerCubeArray -> DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  SamplerBuffer -> DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+  IsamplerBuffer -> DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+  UsamplerBuffer -> DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+  Image1D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage1D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage1D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Image1DArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage1DArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage1DArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Image2D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage2D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage2D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Image2DArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage2DArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage2DArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Image2DRect -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage2DRect -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage2DRect -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Image2DMS -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage2DMS -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage2DMS -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Image2DMSArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage2DMSArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage2DMSArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Image3D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Iimage3D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  Uimage3D -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  ImageCube -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  IimageCube -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  UimageCube -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  ImageCubeArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  IimageCubeArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  UimageCubeArray -> DESCRIPTOR_TYPE_STORAGE_IMAGE
+  ImageBuffer -> DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+  IimageBuffer -> DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+  UimageBuffer -> DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+  Texture1D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Texture1DArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture1D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture1DArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture1D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture1DArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Texture2D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Texture2DArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture2D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture2DArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture2D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture2DArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Texture2DRect -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture2DRect -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture2DRect -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Texture2DMS -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture2DMS -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture2DMS -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Texture2DMSArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture2DMSArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture2DMSArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Texture3D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Itexture3D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  Utexture3D -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  TextureCube -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  ItextureCube -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  UtextureCube -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  TextureCubeArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  ItextureCubeArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  UtextureCubeArray -> DESCRIPTOR_TYPE_SAMPLED_IMAGE
+  -- TextureBuffer -> undefined
+  -- ItextureBuffer -> undefined
+  -- UtextureBuffer -> undefined
+  Sampler -> DESCRIPTOR_TYPE_SAMPLER
+  SamplerShadow -> DESCRIPTOR_TYPE_SAMPLER
+  SubpassInput -> DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+  IsubpassInput -> DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+  UsubpassInput -> DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+  SubpassInputMS -> DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+  IsubpassInputMS -> DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+  UsubpassInputMS -> DESCRIPTOR_TYPE_INPUT_ATTACHMENT
+
+data SeparateImageDescriptorType
+  = TextureBuffer
+  | ItextureBuffer
+  | UtextureBuffer
+  deriving (Show)
+
+instance Convert SeparateImageDescriptorType where
+  maybeFrom = \case
+    "samplerBuffer" -> Just TextureBuffer
+    "isamplerBuffer" -> Just ItextureBuffer
+    "utextureBuffer" -> Just UtextureBuffer
+    _ -> Nothing
+  to = \case
+    TextureBuffer -> "samplerBuffer"
+    ItextureBuffer -> "isamplerBuffer"
+    UtextureBuffer -> "utextureBuffer"
+
+instance FromJSON SeparateImageDescriptorType where
+  parseJSON = withTextMaybe "type" (maybeFrom @SeparateImageDescriptorType)
+
+instance ToJSON SeparateImageDescriptorType where
+  toJSON = String . to
+  toEncoding = toEncoding . to
+
+convertSeparateImageDescriptorType :: SeparateImageDescriptorType -> DescriptorType
+convertSeparateImageDescriptorType = \case
+  TextureBuffer -> DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+  ItextureBuffer -> DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+  UtextureBuffer -> DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
 
 makeTextureDescriptorSetLayoutBinding :: ShaderStage -> Texture -> (Int, DescriptorSetLayoutBinding)
 makeTextureDescriptorSetLayoutBinding stage Texture {..} = (set, zero
   { binding = fromIntegral binding
   , descriptorType = convertTextureDescriptorType type'
-  , descriptorCount = maybe 1 (fromIntegral . V.sum) array
+  , descriptorCount = maybe 1 (fromIntegral . V.product) array
   , stageFlags = convertStage stage
   })
 
@@ -449,7 +958,7 @@ makeVertexAttribute Input {..} = V.generate count (\i -> VertexAttribute
   , format
   })
   where
-    count = maybe 1 V.sum array :: Int
+    count = maybe 1 V.product array :: Int
     (size, format) = convertVertexAttributeType type'
 
 makeVertexInputAttributeDescriptions :: Vector VertexAttribute -> Vector VertexInputAttributeDescription
@@ -512,9 +1021,9 @@ eitherReflect' spirv = liftIO . runExceptT . withSystemTempDirectory "th-spirv" 
 reflection :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Shader, Reflection)
 reflection stage code = do
   (spirv, reflectionRaw) <- reflect stage code
-  case decode reflectionRaw of
-    Just reflection -> pure (Shader {stage, code = spirv}, reflection)
-    Nothing -> error "fail to reflect"
+  case eitherDecode reflectionRaw of
+    Right reflection -> pure (Shader {stage, code = spirv}, reflection)
+    Left err -> error $ "fail to reflect: " <> err
 
 eitherReflection  :: MonadIO m => ShaderStage -> "code" ::: Text -> m (Either String (Shader, Reflection))
 eitherReflection stage code = runExceptT $ do
@@ -525,9 +1034,9 @@ eitherReflection stage code = runExceptT $ do
 reflection' :: MonadIO m => "spirv" ::: B.ByteString -> m (Shader, Reflection)
 reflection' spirv = do
   reflectionRaw <- reflect' spirv
-  case decode reflectionRaw of
-    Just reflection -> pure (Shader {stage = getShaderStage reflection, code = spirv}, reflection)
-    Nothing -> error "fail to reflect"
+  case eitherDecode reflectionRaw of
+    Right reflection -> pure (Shader {stage = getShaderStage reflection, code = spirv}, reflection)
+    Left err -> error $ "fail to reflect: " <> err
 
 eitherReflection' :: MonadIO m => "spirv" ::: B.ByteString -> m (Either String (Shader, Reflection))
 eitherReflection' spirv = runExceptT $ do

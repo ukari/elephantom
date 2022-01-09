@@ -15,7 +15,8 @@ module Shader
   ( ShaderUniform (..)
   , ShaderInputVertex (..)
   , Texture (..)
-  , TriQuadVertex (..)
+  --, TriQuadVertex (..)
+  , QuadVertex (..)
   , Contour (..)
   )
   where
@@ -60,6 +61,13 @@ data TriQuadVertex = TriQuadVertex
   } deriving (Generic, GStorable)
 
 makeOffset ''TriQuadVertex
+
+data QuadVertex = QuadVertex
+  { position :: !(V2 Float)
+  , color :: !(V4 Float)
+  } deriving (Generic, GStorable)
+
+makeOffset ''QuadVertex
 
 data Contour = Contour
   { p1 :: !(V2 Int16)
