@@ -21,7 +21,7 @@ import Data.ByteString.Char8 (ByteString)
 
 import Control.Applicative (liftA2)
 import Control.Monad (join)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (MonadIO)
 
 import Elephantom.Renderer.Descriptor (createDescriptorSetLayout, destroyDescriptorSetLayout)
 import SpirV
@@ -45,7 +45,6 @@ createShaderResource :: MonadIO m => Device -> V.Vector ("spirv" ::: ByteString)
 createShaderResource device spirvs = do
   -- the reflection should be done in compile stage
   reflects <- V.mapM SpirV.reflection' spirvs
-  liftIO $ print $ reflects
   let shaderInfos = SpirV.makeShaderInfo <$> reflects
   (shaderStages, shaderModules) <- first join . V.unzip <$> mapM (liftA2 fmapToFst SpirV.pipelineShaderStageCreateInfos (createShaderModule device)) shaderInfos
   let descriptorSetLayoutCreateInfos = SpirV.makeDescriptorInfo reflects

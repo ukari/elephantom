@@ -733,9 +733,9 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
   let pixels = renderDrawing 200 100 (PixelRGBA8 255 255 0 100) $ fill $ rectangle (V2 0 0) 200 100
 
   -- imageWriteDescriptorSet <- Lib.withCombinedImageSamplerDescriptorSet allocator phys device queueRes commandPoolRes textureDescriptorSetResource 2 1 textureFormat (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) (imageData pixels) acquireT
-  let contoursTexelFormat = FORMAT_R16G16B16_UINT
+  let contoursTexelFormat = FORMAT_R16G16_SINT
   let contours = flatContours bContours :: VS.Vector Contour
-  samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat contours acquireT
+  samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat contours acquireT
 
   updateDescriptorSets device
     [ texBufferWriteDescriptorSet
@@ -859,18 +859,31 @@ withContoursShaderStages device = do
 
   #extension GL_ARB_separate_shader_objects : enable
 
-  layout(set = 0, binding = 1) uniform samplerBuffer contours;
+  layout(set = 0, binding = 1) uniform isamplerBuffer contours;
 
   layout(location = 0) in vec4 fragColor;
 
   layout(location = 0) out vec4 outColor;
 
+  int countWindingNumberBezier2(vec2 pos, ivec2 p1, ivec2 p2, ivec2 p3);
+
   void main() {
-    vec2 cur = gl_FragCoord.xy;
-    for (int i = 0; i < 10; i++) {
-      int offset = i;
+    vec2 pos = gl_FragCoord.xy;
+    int texSize = textureSize(contours);
+    int windingNumber = 0;
+    for (int i = 0; i < texSize; i += 3) {
+      ivec2 p0 = texelFetch(contours, i).xy;
+      ivec2 p1 = texelFetch(contours, i + 1).xy;
+      ivec2 p2 = texelFetch(contours, i + 2).xy;
+      windingNumber += countWindingNumberBezier2(pos, p0, p1, p2);
     }
-    outColor = fragColor;
+
+    outColor = vec4(vec3(windingNumber / float(255)), 1);
+  }
+
+  int countWindingNumberBezier2(vec2 pos, ivec2 p1, ivec2 p2, ivec2 p3) {
+    
+    return 1;
   }
   |]
   Lib.createShaderResource device [ vertCode, fragCode ]

@@ -16,16 +16,20 @@ import Vulkan.Zero
 import Vulkan.CStruct.Extends
 import Vulkan hiding (withBuffer, withImageView, withBufferView)
 
+import Data.Bits ((.&.), zeroBits)
 import Data.Word (Word32)
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as VS
 
 import Foreign.Storable (Storable (sizeOf))
 
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Exception (throw)
+import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO)
 
 import Elephantom.Renderer.CommandPool (CommandPoolResource (..))
 import Elephantom.Renderer.Descriptor (DescriptorSetResource (..))
+import Elephantom.Renderer.RendererException (RendererException (..))
 import Elephantom.Renderer.Queue (QueueResource (..))
 import Elephantom.Renderer.Wrapper.Buffer (withTransferBuffer, withUniformBuffer, withSamplerBuffer)
 import Elephantom.Renderer.Wrapper.Image (withImageSampled)
@@ -104,6 +108,7 @@ withCombinedImageSamplerDescriptorSet allocator phys device queueResource comman
 
 withSamplerBufferDescriptorSet :: forall a m . (Storable a, MonadIO m)
                                => Vma.Allocator
+                               -> PhysicalDevice
                                -> Device
                                -> QueueResource
                                -> CommandPoolResource
@@ -115,14 +120,18 @@ withSamplerBufferDescriptorSet :: forall a m . (Storable a, MonadIO m)
                                -> VS.Vector a
                                -> Allocate m
                                -> m (SomeStruct WriteDescriptorSet)
-withSamplerBufferDescriptorSet allocator device queueResource commandPoolResource familyIndices descriptorSetResource setNumber bindingNumber texelFormat texelData allocate = do
+withSamplerBufferDescriptorSet allocator phys device queueResource commandPoolResource familyIndices descriptorSetResource setNumber bindingNumber texelFormat texelData allocate = do
+  formatProps <- getPhysicalDeviceFormatProperties phys texelFormat
+  when
+    (bufferFeatures formatProps .&. FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT == zeroBits)
+    (throw VulkanUniformTexelStorageFormatUnsupport)
   let transQueue = transferQueue queueResource
   let transCommandPool = transferCommandPool commandPoolResource
   let texelDataSize = fromIntegral $ sizeOf (undefined :: a) * VS.length texelData
-  liftIO . print $ "inner 0"
+
   samplerBuffer <- withSamplerBuffer allocator device transCommandPool transQueue familyIndices texelData allocate
   samplerBufferView <- withBufferView device texelFormat samplerBuffer allocate
-  liftIO . print $ "inner 1"
+
   let bufferInfos :: V.Vector DescriptorBufferInfo
       bufferInfos =
         [ zero

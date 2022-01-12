@@ -12,6 +12,7 @@ data RendererException
   | VulkanPresentFamilyIndexException
   | VulkanTransferFamilyIndexException
   | VulkanLayoutTransitionUnsupport
+  | VulkanUniformTexelStorageFormatUnsupport
   deriving (Show)
 
 instance Exception RendererException
