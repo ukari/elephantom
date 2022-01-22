@@ -873,8 +873,14 @@ withContoursShaderStages device = do
   let b = p0 - p1
   let c = p0
   let d = sqrt(b^2 - ac)
-  r0 = (b + d) / a
-  r1 = (b - d) / a
+  C(t) = at^2 - 2bt + c
+  C'(t) = 2at - 2b
+  A. a == 0
+  t0 = t1 = c / 2b
+  B. a != 0
+  t0 = (b + d) / a
+  t1 = (b - d) / a
+  
   */
   void main() {
     vec2 pos = gl_FragCoord.xy;
@@ -901,34 +907,38 @@ withContoursShaderStages device = do
   }
 
   vec2 calcRoot(float p0, float p1, float p2) {
-    float a = p0 - 2.0 * p1 + p2;
-    float b = p1 - p0;
+    float a = p0 - 2.0f * p1 + p2;
+    float b = p0 - p1;
     float c = p0;
-    float d = sqrt(max(pow(b, 2) - a * c, 0));
+    float d = sqrt(max(pow(b, 2) - a * c, 0.0));
     if (abs(a) < 1e-5) {
-      return vec2(- c / b);
+      float t0 = 0.5f * c / b;
+      float t1 = t0;
+      float xt0 = a * pow(t0, 2.0f) - 2.0f * b * t0 + c;
+      float xt1 = a * pow(t1, 2.0f) - 2.0f * b * t1 + c;
+      return vec2(xt0, xt1);
     } else {
       float t0 = (b + d) / a;
       float t1 = (b - d) / a;
-      float r0 = a * pow(t0, 2.0) + 2.0 * b * t0 + c;
-      float r1 = a * pow(t1, 2.0) + 2.0 * b * t1 + c;
-      return vec2(t0, t1);
+      float xt0 = a * pow(t0, 2.0f) + 2.0f * b * t0 + c;
+      float xt1 = a * pow(t1, 2.0f) + 2.0f * b * t1 + c;
+      return vec2(xt0, xt1);
     }
   }
 
   float countWindingNumberBezier2Axis(float p0, float p1, float p2) {
     uint p0p1p2 = (p0 > 0 ? 0x8U : 0) | (p1 > 0 ? 0x4U : 0) | (p2 > 0 ? 0x2U : 0);
     uint tmp = 0x2e74U >> p0p1p2; // Font Rendering Directly from Glyph Outlines Eric Lengyel
-    uint t1 = tmp & 0x1U;
-    uint t2 = (tmp >> 1) & 0x1U;
+    uint t0 = tmp & 0x1U;
+    uint t1 = (tmp >> 1) & 0x1U;
     vec2 r0r1 = calcRoot(p0, p1, p2);
     float acc = 0;
-    //if (r0r1.x > 0) {
-    acc -= clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
-    //}
-    //if (r0r1.y > 0) {
-    acc += clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
-    //}
+    if (r0r1.x > 0) {
+      acc -= 1.0f * t0;//clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
+    }
+    if (r0r1.y > 0) {
+      acc += 1.0f * t1;//clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
+    }
     return acc;
     
     /*float a = p0 - 2 * p1 + p2;
