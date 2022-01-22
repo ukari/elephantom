@@ -116,7 +116,7 @@ import Control.Carrier.State.Strict hiding (modify)
 --import Control.Effect.Exception (throw, catch, catchJust, try, tryJust)
 import Control.Arrow ((&&&))
 import Control.Applicative ((<|>), Applicative (..), optional, liftA, liftA2)
-import Control.Monad (liftM, liftM2, join, forever)
+import Control.Monad (liftM, liftM2, join, forever, forM)
 import Control.Monad.Trans.Cont (ContT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -165,7 +165,7 @@ import System.Environment (getProgName, getExecutablePath)
 import Paths_elephantom (getDataFileName, getBinDir, getDataDir, getSysconfDir)
 
 testEff :: IO (Either RendererException ())
-testEff = runError $ testThrowException
+testEff = runError testThrowException
 
 testThrowException :: ( Has (Error RendererException :+: Lift IO) sig m
                       , Has (Lift IO) sig m
@@ -236,7 +236,7 @@ runTestApp = do
   env <- liftIO getEnviornment
   appConfig <- liftIO $ detectAppConfig env
   liftIO $ print appConfig
-  evalState appConfig $ testfont
+  evalState appConfig testfont
 
 testAppCon :: App sig m => m ()
 testAppCon = do
@@ -260,15 +260,14 @@ testfont = do
 
 loadfont :: Font -> IO ()
 loadfont font = do
-  print $ "units per em: " <> show (unitsPerEm font)
   let (code, glyphs) = getCharacterGlyphsAndMetrics font 'J'
   print code
-  flip mapM glyphs $ \(RawGlyph scales index contours) -> do
+  forM glyphs $ \(RawGlyph scales index contours) -> do
     print $ "scales: " <> show scales
     print $ "index: " <> show index
     print $ "contours: " <> show contours
     print $ "contours dot count: " <> show (VU.length <$> contours)
-
+    print $ "unitsPerEm: " <> show (unitsPerEm font)
   pure ()
 
 testRelease :: IO ()
@@ -709,8 +708,8 @@ loadContours :: (MonadIO m, MonadCleaner m) => Application -> Vma.Allocator -> P
 loadContours Application { width, height } allocator phys device queueFamilyIndices queueRes@QueueResource {..} commandPoolRes@CommandPoolResource {..}  textureShaderRes pipelineRes = do
   -- liftIO . print . descriptorSetLayouts $ textureShaderRes
   textureDescriptorSetResource <- Lib.withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes) acquireT
-  let quadw = 200 :: Float
-  let quadh = 400 :: Float
+  let quadw = 1000 :: Float
+  let quadh = 1000 :: Float
   let triquadVertices = [ QuadVertex (V2 0 0) (V4 1 1 1 1)
                       , QuadVertex (V2 quadw 0) (V4 0 0 0 1)
                       , QuadVertex (V2 quadw quadh) (V4 1 1 1 1)
@@ -865,25 +864,95 @@ withContoursShaderStages device = do
 
   layout(location = 0) out vec4 outColor;
 
-  int countWindingNumberBezier2(vec2 pos, ivec2 p1, ivec2 p2, ivec2 p3);
+  float countWindingNumberBezier2(vec2 p0, vec2 p1, vec2 p2);
 
+  float countWindingNumberBezier2Axis(float p0, float p1, float p2);
+  /*
+  C(t) = (p0 - 2p1 + p2)t^2 + 2(p1 - p0)t + p0
+  let a = p0 - 2p1 + p2
+  let b = p0 - p1
+  let c = p0
+  let d = sqrt(b^2 - ac)
+  r0 = (b + d) / a
+  r1 = (b - d) / a
+  */
   void main() {
     vec2 pos = gl_FragCoord.xy;
     int texSize = textureSize(contours);
-    int windingNumber = 0;
+    float windingNumber = 0;
     for (int i = 0; i < texSize; i += 3) {
       ivec2 p0 = texelFetch(contours, i).xy;
       ivec2 p1 = texelFetch(contours, i + 1).xy;
       ivec2 p2 = texelFetch(contours, i + 2).xy;
-      windingNumber += countWindingNumberBezier2(pos, p0, p1, p2);
+      windingNumber += countWindingNumberBezier2(p0 - pos, p1 - pos, p2 - pos);
+      //outColor = vec4(p1/255.0, 0, 1);
+      //break;
     }
-
-    outColor = vec4(vec3(windingNumber / float(255)), 1);
+    outColor = vec4(vec3(clamp(1.0 - windingNumber, 0.0, 1.0)), 1.0);
   }
 
-  int countWindingNumberBezier2(vec2 pos, ivec2 p1, ivec2 p2, ivec2 p3) {
+  float countWindingNumberBezier2(vec2 p0, vec2 p1, vec2 p2) {
+
+    float wny = countWindingNumberBezier2Axis(p0.y, p1.y, p2.y);
+    //int wnx = countWindingNumberBezier2Axis(p0.x, p1.x, p2.x);
+
+    //return (wny + wnx) / 2;
+    return wny;
+  }
+
+  vec2 calcRoot(float p0, float p1, float p2) {
+    float a = p0 - 2.0 * p1 + p2;
+    float b = p1 - p0;
+    float c = p0;
+    float d = sqrt(max(pow(b, 2) - a * c, 0));
+    if (abs(a) < 1e-5) {
+      return vec2(- c / b);
+    } else {
+      float t0 = (b + d) / a;
+      float t1 = (b - d) / a;
+      float r0 = a * pow(t0, 2.0) + 2.0 * b * t0 + c;
+      float r1 = a * pow(t1, 2.0) + 2.0 * b * t1 + c;
+      return vec2(t0, t1);
+    }
+  }
+
+  float countWindingNumberBezier2Axis(float p0, float p1, float p2) {
+    uint p0p1p2 = (p0 > 0 ? 0x8U : 0) | (p1 > 0 ? 0x4U : 0) | (p2 > 0 ? 0x2U : 0);
+    uint tmp = 0x2e74U >> p0p1p2; // Font Rendering Directly from Glyph Outlines Eric Lengyel
+    uint t1 = tmp & 0x1U;
+    uint t2 = (tmp >> 1) & 0x1U;
+    vec2 r0r1 = calcRoot(p0, p1, p2);
+    float acc = 0;
+    //if (r0r1.x > 0) {
+    acc -= clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
+    //}
+    //if (r0r1.y > 0) {
+    acc += clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
+    //}
+    return acc;
     
-    return 1;
+    /*float a = p0 - 2 * p1 + p2;
+    float b = p1 - p0;
+    float c = p0;
+    float d = sqrt(max(pow(b, 2) - a * c, 0));
+    if (a == 0) {
+      if (-c / b >= 0) {
+        return int(t2 - t1);
+      } else {
+        return 0;
+      }
+    } else {
+      float r1 = (b + d) / a;
+      float r2 = (b - d) / a;
+      float acc = 0;
+      if (r1 >= 0) {
+        acc -= t1;
+      }
+      if (r2 >= 0) {
+        acc += t2;
+      }
+      return int(t2 - t1);
+    }*/
   }
   |]
   Lib.createShaderResource device [ vertCode, fragCode ]
