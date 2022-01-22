@@ -866,7 +866,7 @@ withContoursShaderStages device = do
 
   float countWindingNumberBezier2(vec2 p0, vec2 p1, vec2 p2);
 
-  float countWindingNumberBezier2Axis(float p0, float p1, float p2);
+  float countWindingNumberBezier2Axis(vec2 p0, vec2 p1, vec2 p2);
   /*
   C(t) = (p0 - 2p1 + p2)t^2 + 2(p1 - p0)t + p0
   let a = p0 - 2p1 + p2
@@ -899,35 +899,35 @@ withContoursShaderStages device = do
 
   float countWindingNumberBezier2(vec2 p0, vec2 p1, vec2 p2) {
 
-    float wny = countWindingNumberBezier2Axis(p0.y, p1.y, p2.y);
-    //int wnx = countWindingNumberBezier2Axis(p0.x, p1.x, p2.x);
+    float wny = countWindingNumberBezier2Axis(p0, p1, p2);
+    //float wnx = countWindingNumberBezier2Axis(p0.x, p1.x, p2.x);
 
     //return (wny + wnx) / 2;
     return wny;
   }
 
-  vec2 calcRoot(float p0, float p1, float p2) {
-    float a = p0 - 2.0f * p1 + p2;
-    float b = p0 - p1;
-    float c = p0;
-    float d = sqrt(max(pow(b, 2) - a * c, 0.0));
-    if (abs(a) < 1e-5) {
-      float t0 = 0.5f * c / b;
+  vec2 calcRoot(vec2 p0, vec2 p1, vec2 p2) {
+    vec2 a = p0 - 2.0f * p1 + p2;
+    vec2 b = p0 - p1;
+    vec2 c = p0;
+    float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
+    if (abs(a.y) < 1e-5) {
+      float t0 = 0.5f * c.y / b.y;
       float t1 = t0;
-      float xt0 = a * pow(t0, 2.0f) - 2.0f * b * t0 + c;
-      float xt1 = a * pow(t1, 2.0f) - 2.0f * b * t1 + c;
+      float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
+      float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
       return vec2(xt0, xt1);
     } else {
-      float t0 = (b + d) / a;
-      float t1 = (b - d) / a;
-      float xt0 = a * pow(t0, 2.0f) + 2.0f * b * t0 + c;
-      float xt1 = a * pow(t1, 2.0f) + 2.0f * b * t1 + c;
+      float t0 = (b.y + d) / a.y;
+      float t1 = (b.y - d) / a.y;
+      float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
+      float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
       return vec2(xt0, xt1);
     }
   }
 
-  float countWindingNumberBezier2Axis(float p0, float p1, float p2) {
-    uint p0p1p2 = (p0 > 0 ? 0x8U : 0) | (p1 > 0 ? 0x4U : 0) | (p2 > 0 ? 0x2U : 0);
+  float countWindingNumberBezier2Axis(vec2 p0, vec2 p1, vec2 p2) {
+    uint p0p1p2 = (p0.y > 0 ? 0x8U : 0) | (p1.y > 0 ? 0x4U : 0) | (p2.y > 0 ? 0x2U : 0);
     uint tmp = 0x2e74U >> p0p1p2; // Font Rendering Directly from Glyph Outlines Eric Lengyel
     uint t0 = tmp & 0x1U;
     uint t1 = (tmp >> 1) & 0x1U;
