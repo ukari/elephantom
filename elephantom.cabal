@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fdb614115569a7d18bc4784ff49221944f5dd3ba304f1c6fce977ccb29deb3cb
+-- hash: cef85bf37e10ce21639059baa56780f95605c757c3a537ab04e2801803cfb025
 
 name:           elephantom
 version:        0.1.0.0
@@ -148,7 +148,6 @@ library
     , massiv-io >=0.4.1.0
     , microlens-platform
     , monad-logger
-    , offset
     , parsec
     , qm-interpolated-string
     , random

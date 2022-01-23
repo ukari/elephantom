@@ -83,7 +83,6 @@ library:
   - transformers
   - monad-logger
   - derive-storable
-  - offset
 
 executables:
   elephantom:
