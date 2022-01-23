@@ -260,7 +260,7 @@ testfont = do
 
 loadfont :: Font -> IO ()
 loadfont font = do
-  let (code, glyphs) = getCharacterGlyphsAndMetrics font 'J'
+  let (code, glyphs) = getCharacterGlyphsAndMetrics font 'R'
   print code
   forM glyphs $ \(RawGlyph scales index contours) -> do
     print $ "scales: " <> show scales
@@ -691,6 +691,12 @@ loadTexture Application { width, height } allocator phys device queueFamilyIndic
 bContours :: [ VU.Vector (Int16, Int16) ]
 bContours = [[(99,0),(99,328),(99,656),(192,656),(285,656),(335,656),(376,647),(418,638),(447,619),(477,600),(493,569),(510,539),(510,496),(510,447),(482,407),(454,368),(395,353),(395,351),(395,349),(467,338),(507,299),(547,260),(547,192),(547,144),(529,108),(511,72),(478,48),(446,24),(400,12),(355,0),(300,0),(199,0),(99,0)],[(182,380),(226,380),(271,380),(355,380),(391,407),(428,434),(428,489),(428,543),(389,564),(351,586),(275,586),(228,586),(182,586),(182,483),(182,380)],[(182,70),(235,70),(288,70),(373,70),(419,99),(465,129),(465,196),(465,257),(420,283),(375,310),(288,310),(235,310),(182,310),(182,190),(182,70)]]
 
+rContours :: [ VU.Vector (Int16, Int16) ]
+rContours = [[(100,0),(100,328),(100,656),(202,656),(304,656),(354,656),(396,646),(438,637),(468,615),(499,593),(516,558),(533,523),(533,472),(533,395),(493,349),(453,303),(386,286),(469,143),(553,0),(505,0),(458,0),(379,138),(300,277),(241,277),(183,277),(183,138),(183,0),(141,0),(100,0)],[(183,345),(237,345),(292,345),(369,345),(409,376),(450,408),(450,472),(450,537),(409,563),(369,589),(292,589),(237,589),(183,589),(183,467),(183,345)]]
+
+quadContours :: [ VU.Vector (Int16, Int16) ]
+quadContours = [VU.reverse [(100,0),(100,328),(100,656),(202,656),(304,656),(141,0),(100,0)]]
+
 flatContours :: [ VU.Vector (Int16, Int16) ] -> VS.Vector Contour 
 flatContours = VS.concat . map (`flatClosedContour` [])
   where
@@ -733,7 +739,9 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
 
   -- imageWriteDescriptorSet <- Lib.withCombinedImageSamplerDescriptorSet allocator phys device queueRes commandPoolRes textureDescriptorSetResource 2 1 textureFormat (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) (imageData pixels) acquireT
   let contoursTexelFormat = FORMAT_R16G16_SINT
-  let contours = flatContours bContours :: VS.Vector Contour
+  -- let contours = VS.map (\(Contour (V2 x1 y1) (V2 x2 y2) (V2 x3 y3)) -> Contour (V2 y1 ( x1)) (V2 y2 (x2)) (V2 y3 x3)) (flatContours rContours) :: VS.Vector Contour
+  let contours = flatContours rContours :: VS.Vector Contour
+  --let contours = flatContours quadContours :: VS.Vector Contour
   samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat contours acquireT
 
   updateDescriptorSets device
@@ -883,7 +891,8 @@ withContoursShaderStages device = do
   
   */
   void main() {
-    vec2 pos = gl_FragCoord.xy;
+    vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(-250, 1080.0 - 250.0);
+    //vec2 pos = gl_FragCoord.xy;
     int texSize = textureSize(contours);
     float windingNumber = 0;
     for (int i = 0; i < texSize; i += 3) {
@@ -900,10 +909,11 @@ withContoursShaderStages device = do
   float countWindingNumberBezier2(vec2 p0, vec2 p1, vec2 p2) {
 
     float wny = countWindingNumberBezier2Axis(p0, p1, p2);
-    //float wnx = countWindingNumberBezier2Axis(p0.x, p1.x, p2.x);
+    float wnx = - countWindingNumberBezier2Axis(p0.yx, p1.yx, p2.yx);
 
-    //return (wny + wnx) / 2;
-    return wny;
+    return (wny + wnx) / 2.0;
+    //return wny;
+    //return wnx;
   }
 
   vec2 calcRoot(vec2 p0, vec2 p1, vec2 p2) {
@@ -912,6 +922,9 @@ withContoursShaderStages device = do
     vec2 c = p0;
     float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
     if (abs(a.y) < 1e-5) {
+      if (abs(b.y) < 1e-5) {
+        return vec2(-1, -1);
+      }
       float t0 = 0.5f * c.y / b.y;
       float t1 = t0;
       float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
@@ -935,34 +948,13 @@ withContoursShaderStages device = do
     float acc = 0;
     if (r0r1.x > 0) {
       acc -= 1.0f * t0;//clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
+      //acc -= t0 * clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
     }
     if (r0r1.y > 0) {
       acc += 1.0f * t1;//clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
+      //acc += t1 * clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
     }
     return acc;
-    
-    /*float a = p0 - 2 * p1 + p2;
-    float b = p1 - p0;
-    float c = p0;
-    float d = sqrt(max(pow(b, 2) - a * c, 0));
-    if (a == 0) {
-      if (-c / b >= 0) {
-        return int(t2 - t1);
-      } else {
-        return 0;
-      }
-    } else {
-      float r1 = (b + d) / a;
-      float r2 = (b - d) / a;
-      float acc = 0;
-      if (r1 >= 0) {
-        acc -= t1;
-      }
-      if (r2 >= 0) {
-        acc += t2;
-      }
-      return int(t2 - t1);
-    }*/
   }
   |]
   Lib.createShaderResource device [ vertCode, fragCode ]
