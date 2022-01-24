@@ -396,7 +396,7 @@ rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  let application@Application {..} = defaultApplication { width = 640, height = 480 } :: Application
+  let application@Application {..} = defaultApplication { width = 640, height = 480, fps = 1 } :: Application
 
   eventQueue <- liftIO newQueue
   withSDL
@@ -907,11 +907,13 @@ withContoursShaderStages device = do
   }
 
   float countWindingNumberBezier2(vec2 p0, vec2 p1, vec2 p2) {
-
+    uint multisampling = 1;
     float wny = countWindingNumberBezier2Axis(p0, p1, p2);
-    float wnx = - countWindingNumberBezier2Axis(p0.yx, p1.yx, p2.yx);
+    float wnx = -countWindingNumberBezier2Axis(p0.yx, p1.yx, p2.yx);
+    float wnyr = -countWindingNumberBezier2Axis(p0 * vec2(-1,1), p1*vec2(-1,1), p2*vec2(-1,1));
+    float wnxr = countWindingNumberBezier2Axis(p0.yx * vec2(1,-1), p1.yx* vec2(1,-1), p2.yx*vec2(1,-1));
 
-    return (wny + wnx) / 2.0;
+    return (wny + wnx + wnyr + wnxr) / 4.0;
     //return wny;
     //return wnx;
   }
@@ -947,12 +949,12 @@ withContoursShaderStages device = do
     vec2 r0r1 = calcRoot(p0, p1, p2);
     float acc = 0;
     if (r0r1.x > 0) {
-      acc -= 1.0f * t0;//clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
-      //acc -= t0 * clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
+      // acc -= 1.0f * t0;//clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
+      acc -= t0 * clamp(r0r1.x, 0.0, 1.0);
     }
     if (r0r1.y > 0) {
-      acc += 1.0f * t1;//clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
-      //acc += t1 * clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
+      // acc += 1.0f * t1;//clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
+      acc += t1 * clamp(r0r1.y, 0.0, 1.0);
     }
     return acc;
   }
