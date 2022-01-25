@@ -2,6 +2,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Elephantom.Renderer.Swapchain
   ( SwapchainResource (..)
@@ -41,11 +42,16 @@ chooseFormat formats = fromMaybe (V.head formats) $ V.find isSRGB formats
   where
     isSRGB = (==) SurfaceFormatKHR {format = FORMAT_B8G8R8A8_SRGB, colorSpace = COLOR_SPACE_SRGB_NONLINEAR_KHR}
 
-createSwapchain :: MonadIO m => PhysicalDevice -> Device -> SurfaceKHR -> SurfaceFormatKHR -> "queueFamilyIndices" ::: V.Vector Word32 -> Extent2D -> RenderPass -> SwapchainKHR -> m SwapchainResource
-createSwapchain phys device surf surfaceFormat indices extent renderPass oldSwapchain = do
+pattern CURRENT_SURFACE_EXTENT_SPECIAL_VALUE :: Extent2D
+pattern CURRENT_SURFACE_EXTENT_SPECIAL_VALUE = Extent2D 0xFFFFFFFF 0xFFFFFFFF
+
+createSwapchain :: MonadIO m => PhysicalDevice -> Device -> SurfaceKHR -> SurfaceFormatKHR -> "queueFamilyIndices" ::: V.Vector Word32 -> "fallback extent" ::: Extent2D -> RenderPass -> SwapchainKHR -> m SwapchainResource
+createSwapchain phys device surf surfaceFormat indices fallbackExtent renderPass oldSwapchain = do
   (_, presentModes) <- getPhysicalDeviceSurfacePresentModesKHR phys surf
   liftIO $ print presentModes
   surfaceCaps <- getPhysicalDeviceSurfaceCapabilitiesKHR phys surf
+  let currentSurfaceExtent = (currentExtent :: SurfaceCapabilitiesKHR -> Extent2D) surfaceCaps
+  let extent = if currentSurfaceExtent == CURRENT_SURFACE_EXTENT_SPECIAL_VALUE then fallbackExtent else currentSurfaceExtent
   let presentMode = tryWith PRESENT_MODE_FIFO_KHR (V.find (== PRESENT_MODE_MAILBOX_KHR) presentModes)
   let sharingMode = chooseSharingMode indices
   let swapchainCreateInfo :: SwapchainCreateInfoKHR '[]
