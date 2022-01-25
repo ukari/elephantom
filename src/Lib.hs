@@ -396,7 +396,7 @@ rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  let application@Application {..} = defaultApplication { width = 640, height = 480, fps = 1 } :: Application
+  let application@Application {..} = defaultApplication { width = 640, height = 480, fps = 3 } :: Application
 
   eventQueue <- liftIO newQueue
   withSDL
@@ -464,8 +464,8 @@ someFunc = runResourceT $ do
   commandBufferRes@CommandBufferResource {..} <- createCommandBufferResource device graphicsCommandPool frameSize
   cleanupMVar <- liftIO . newMVar $ (frameSync, commandBufferRes, swapchainRes)
   let ctx = Context {..}
-
-  liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
+  liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
+  -- liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
 
 loadTriangle :: MonadCleaner m => Application -> Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
 loadTriangle Application { width, height } allocator device queueFamilyIndices shaderRes pipelineRes = do
@@ -910,53 +910,47 @@ withContoursShaderStages device = do
     uint multisampling = 1;
     float wny = countWindingNumberBezier2Axis(p0, p1, p2);
     float wnx = -countWindingNumberBezier2Axis(p0.yx, p1.yx, p2.yx);
-    float wnyr = -countWindingNumberBezier2Axis(p0 * vec2(-1,1), p1*vec2(-1,1), p2*vec2(-1,1));
+    /*float wnyr = -countWindingNumberBezier2Axis(p0 * vec2(-1,1), p1*vec2(-1,1), p2*vec2(-1,1));
     float wnxr = countWindingNumberBezier2Axis(p0.yx * vec2(1,-1), p1.yx* vec2(1,-1), p2.yx*vec2(1,-1));
 
     return (wny + wnx + wnyr + wnxr) / 4.0;
-    //return wny;
+    */
+    return (wny + wnx) / 2.0;
     //return wnx;
   }
 
   vec2 calcRoot(vec2 p0, vec2 p1, vec2 p2) {
-    vec2 a = p0 - 2.0f * p1 + p2;
-    vec2 b = p0 - p1;
-    vec2 c = p0;
-    float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
+    const vec2 a = p0 - 2.0f * p1 + p2;
+    const vec2 b = p0 - p1;
+    const vec2 c = p0;
+    const float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
     if (abs(a.y) < 1e-5) {
       if (abs(b.y) < 1e-5) {
         return vec2(-1, -1);
       }
-      float t0 = 0.5f * c.y / b.y;
-      float t1 = t0;
-      float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
-      float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
+      const float t0 = 0.5f * c.y / b.y;
+      const float t1 = t0;
+      const float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
+      const float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
       return vec2(xt0, xt1);
     } else {
-      float t0 = (b.y + d) / a.y;
-      float t1 = (b.y - d) / a.y;
-      float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
-      float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
+      const float t0 = (b.y + d) / a.y;
+      const float t1 = (b.y - d) / a.y;
+      const float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
+      const float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
       return vec2(xt0, xt1);
     }
   }
 
   float countWindingNumberBezier2Axis(vec2 p0, vec2 p1, vec2 p2) {
-    uint p0p1p2 = (p0.y > 0 ? 0x8U : 0) | (p1.y > 0 ? 0x4U : 0) | (p2.y > 0 ? 0x2U : 0);
-    uint tmp = 0x2e74U >> p0p1p2; // Font Rendering Directly from Glyph Outlines Eric Lengyel
-    uint t0 = tmp & 0x1U;
-    uint t1 = (tmp >> 1) & 0x1U;
-    vec2 r0r1 = calcRoot(p0, p1, p2);
-    float acc = 0;
-    if (r0r1.x > 0) {
-      // acc -= 1.0f * t0;//clamp(r0r1.x * 1000.0 + 0.5, 0.0, 1.0);
-      acc -= t0 * clamp(r0r1.x, 0.0, 1.0);
-    }
-    if (r0r1.y > 0) {
-      // acc += 1.0f * t1;//clamp(r0r1.y * 1000.0 + 0.5, 0.0, 1.0);
-      acc += t1 * clamp(r0r1.y, 0.0, 1.0);
-    }
-    return acc;
+    const uint p0p1p2 = (p0.y > 0 ? 0x8U : 0) | (p1.y > 0 ? 0x4U : 0) | (p2.y > 0 ? 0x2U : 0);
+    const uint tmp = 0x2e74U >> p0p1p2; // Font Rendering Directly from Glyph Outlines Eric Lengyel
+    const uint t0 = tmp & 0x1U;
+    const uint t1 = (tmp >> 1) & 0x1U;
+    const vec2 r0r1 = calcRoot(p0, p1, p2);
+    const float acc0 = t0 * - clamp(r0r1.x + 0.5, 0.0, 1.0);
+    const float acc1 = t1 * clamp(r0r1.y + 0.5, 0.0, 1.0);
+    return acc0 + acc1;
   }
   |]
   Lib.createShaderResource device [ vertCode, fragCode ]

@@ -29,6 +29,7 @@ data SwapchainResource = SwapchainResource
   , images :: !(V.Vector Image)
   , imageViews :: !(V.Vector ImageView)
   , framebuffers :: !(V.Vector Framebuffer)
+  , extent :: !Extent2D
   }
 
 chooseSharingMode :: "queueFamilyIndices" ::: V.Vector Word32 -> SharingMode

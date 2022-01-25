@@ -94,6 +94,7 @@ recreateSwapchain (Context {..}, oldFrameSync@FrameSync {..}, oldCmdRes@CommandB
 
   V2 width height <- SDL.vkGetDrawableSize window
   let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  liftIO $ print $ "extent recreate >>>>>>>> " <> show extent
   swapchainRes@SwapchainResource { framebuffers } <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
   destroySwapchain device oldSwapchainRes
 
@@ -103,7 +104,7 @@ recreateSwapchain (Context {..}, oldFrameSync@FrameSync {..}, oldCmdRes@CommandB
   pure (frameSync, commandBufferRes, swapchainRes)
 
 drawFrameHandler :: MonadIO m => (Context, FrameSync, CommandBufferResource, SwapchainResource) -> VulkanException -> m (Maybe (Context, FrameSync, CommandBufferResource, SwapchainResource))
-drawFrameHandler frame@(ctx, _, _, _) (VulkanException _e@ERROR_OUT_OF_DATE_KHR) = do
+drawFrameHandler frame@(ctx, _, _, _) (VulkanException _e@ERROR_OUT_OF_DATE_KHR) = (fmap liftIO . Ex.handle) (drawFrameHandler frame) $ do
   (frameSync, commandBufferRes, swapchainRes) <- recreateSwapchain frame
   pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
 drawFrameHandler _ e = throw e
@@ -121,8 +122,11 @@ drawFrame frame@(ctx@Context {..}, frameSync@FrameSync {..}, cmdr@CommandBufferR
 
   let commandBuffer = commandBuffers ! sync
   resetCommandBuffer commandBuffer COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-  V2 width height <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  --V2 width height <- SDL.vkGetDrawableSize window
+  -- let extent = Extent2D (fromIntegral width) (fromIntegral height)
+  -- let extent = Extent2D 1400 1400
+  --(fromIntegral width) (fromIntegral height)
+  --liftIO $ print $ "extent drawframe >>>>>>>> " <> show extent
   submitCommand application extent renderPass presents (commandBuffer, framebuffers! sync)
 
   let renderFinishedSemaphore = renderFinishedSemaphores ! sync
