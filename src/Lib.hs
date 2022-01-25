@@ -920,36 +920,36 @@ withContoursShaderStages device = do
   }
 
   vec2 calcRoot(vec2 p0, vec2 p1, vec2 p2) {
-    const vec2 a = p0 - 2.0f * p1 + p2;
-    const vec2 b = p0 - p1;
-    const vec2 c = p0;
-    const float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
+    vec2 a = p0 - 2.0f * p1 + p2;
+    vec2 b = p0 - p1;
+    vec2 c = p0;
+    float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
     if (abs(a.y) < 1e-5) {
       if (abs(b.y) < 1e-5) {
         return vec2(-1, -1);
       }
-      const float t0 = 0.5f * c.y / b.y;
-      const float t1 = t0;
-      const float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
-      const float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
+      float t0 = 0.5f * c.y / b.y;
+      float t1 = t0;
+      float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
+      float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
       return vec2(xt0, xt1);
     } else {
-      const float t0 = (b.y + d) / a.y;
-      const float t1 = (b.y - d) / a.y;
-      const float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
-      const float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
+      float t0 = (b.y + d) / a.y;
+      float t1 = (b.y - d) / a.y;
+      float xt0 = a.x * pow(t0, 2.0f) - 2.0f * b.x * t0 + c.x;
+      float xt1 = a.x * pow(t1, 2.0f) - 2.0f * b.x * t1 + c.x;
       return vec2(xt0, xt1);
     }
   }
 
   float countWindingNumberBezier2Axis(vec2 p0, vec2 p1, vec2 p2) {
-    const uint p0p1p2 = (p0.y > 0 ? 0x8U : 0) | (p1.y > 0 ? 0x4U : 0) | (p2.y > 0 ? 0x2U : 0);
-    const uint tmp = 0x2e74U >> p0p1p2; // Font Rendering Directly from Glyph Outlines Eric Lengyel
-    const uint t0 = tmp & 0x1U;
-    const uint t1 = (tmp >> 1) & 0x1U;
-    const vec2 r0r1 = calcRoot(p0, p1, p2);
-    const float acc0 = t0 * - clamp(r0r1.x + 0.5, 0.0, 1.0);
-    const float acc1 = t1 * clamp(r0r1.y + 0.5, 0.0, 1.0);
+    uint p0p1p2 = (p0.y > 0 ? 0x8U : 0) | (p1.y > 0 ? 0x4U : 0) | (p2.y > 0 ? 0x2U : 0);
+    uint tmp = 0x2e74U >> p0p1p2; // Font Rendering Directly from Glyph Outlines Eric Lengyel
+    uint t0 = tmp & 0x1U;
+    uint t1 = (tmp >> 1) & 0x1U;
+    vec2 r0r1 = calcRoot(p0, p1, p2);
+    float acc0 = t0 * - clamp(r0r1.x + 0.5, 0.0, 1.0);
+    float acc1 = t1 * clamp(r0r1.y + 0.5, 0.0, 1.0);
     return acc0 + acc1;
   }
   |]
