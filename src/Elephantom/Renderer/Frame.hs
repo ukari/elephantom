@@ -93,9 +93,9 @@ recreateSwapchain (Context {..}, oldFrameSync@FrameSync {..}, oldCmdRes@CommandB
   destroyFrameSync device oldFrameSync
 
   V2 width height <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral width) (fromIntegral height)
-  liftIO $ print $ "extent recreate >>>>>>>> " <> show extent
-  swapchainRes@SwapchainResource { framebuffers } <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass swapchain
+  let fallbackExtent = Extent2D (fromIntegral width) (fromIntegral height)
+  liftIO $ print $ "fallback extent recreate >>>>>>>> " <> show fallbackExtent
+  swapchainRes@SwapchainResource { framebuffers } <- createSwapchain phys device surf surfaceFormat queueFamilyIndices fallbackExtent renderPass swapchain
   destroySwapchain device oldSwapchainRes
 
   frameSync <- createFrameSync device framebuffers

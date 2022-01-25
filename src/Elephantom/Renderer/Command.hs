@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -49,7 +50,7 @@ submitCommand :: MonadIO m
               -> V.Vector Present
               -> (CommandBuffer, Framebuffer)
               -> m ()
-submitCommand app extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
+submitCommand app@Application { bgRed, bgGreen, bgBlue } extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
   let viewport = makeViewport app extent
   let viewports = [ viewport ] :: V.Vector Viewport
   let scissors =
@@ -67,7 +68,7 @@ submitCommand app extent@Extent2D {..} renderPass presents (commandBuffer, frame
       { offset = zero
       , extent = extent
       }
-    , clearValues = [ Color $ Float32 1 1 1 1 ]
+    , clearValues = [ Color $ Float32 (fromIntegral bgRed / 255) (fromIntegral bgGreen / 255) (fromIntegral bgBlue / 255) 1 ]
     } SUBPASS_CONTENTS_INLINE $ mapM_ (presentCmd viewports scissors) presents
   where
     presentCmd :: V.Vector Viewport -> V.Vector Rect2D -> Present -> IO ()

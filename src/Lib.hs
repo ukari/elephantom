@@ -396,7 +396,7 @@ rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  let application@Application {..} = defaultApplication { width = 640, height = 480, fps = 3 } :: Application
+  let application@Application {..} = defaultApplication { width = 640, height = 480, fps = 12, bgRed = 64, bgGreen = 0, bgBlue = 0 } :: Application
 
   eventQueue <- liftIO newQueue
   withSDL
@@ -454,8 +454,8 @@ someFunc = runResourceT $ do
   -- resource load end
 
   V2 windowWidth windowHeight <- SDL.vkGetDrawableSize window
-  let extent = Extent2D (fromIntegral windowWidth) (fromIntegral windowHeight)
-  swapchainRes@SwapchainResource {..} <- createSwapchain phys device surf surfaceFormat queueFamilyIndices extent renderPass NULL_HANDLE
+  let fallbackExtent = Extent2D (fromIntegral windowWidth) (fromIntegral windowHeight)
+  swapchainRes@SwapchainResource {..} <- createSwapchain phys device surf surfaceFormat queueFamilyIndices fallbackExtent renderPass NULL_HANDLE
 
   -- mapM_ (submitCommand extent renderPass [ trianglePresent, texturePresent ]) (V.zip commandBuffers framebuffers)
   presentsMVar <- liftIO . newMVar $ [ trianglePresent, texturePresent, contoursPresent ]
@@ -464,8 +464,8 @@ someFunc = runResourceT $ do
   commandBufferRes@CommandBufferResource {..} <- createCommandBufferResource device graphicsCommandPool frameSize
   cleanupMVar <- liftIO . newMVar $ (frameSync, commandBufferRes, swapchainRes)
   let ctx = Context {..}
-  liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
-  -- liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
+  -- liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
+  liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
 
 loadTriangle :: MonadCleaner m => Application -> Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
 loadTriangle Application { width, height } allocator device queueFamilyIndices shaderRes pipelineRes = do
@@ -891,8 +891,8 @@ withContoursShaderStages device = do
   
   */
   void main() {
-    vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(-250, 1080.0 - 250.0);
-    //vec2 pos = gl_FragCoord.xy;
+    //vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(0, 1080.0);
+    vec2 pos = gl_FragCoord.xy;
     int texSize = textureSize(contours);
     float windingNumber = 0;
     for (int i = 0; i < texSize; i += 3) {
