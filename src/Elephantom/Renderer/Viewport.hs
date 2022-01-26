@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Elephantom.Renderer.Viewport
-  {-# DEPRECATED "make viewport directly from extent instead" #-}
+  {-# DEPRECATED "make viewport directly from app config instead" #-}
   ( calculateViewport
   , makeViewport
   ) where

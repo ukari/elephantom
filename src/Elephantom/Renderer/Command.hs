@@ -49,7 +49,7 @@ submitCommand :: MonadIO m
               -> V.Vector Present
               -> (CommandBuffer, Framebuffer)
               -> m ()
-submitCommand Application { bgRed, bgGreen, bgBlue } extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
+submitCommand Application { bgRed, bgGreen, bgBlue, width, height } extent renderPass presents (commandBuffer, framebuffer) = do
   let viewport = Viewport
         { x = 0
         , y = 0
