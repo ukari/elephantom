@@ -21,7 +21,6 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Elephantom.Application (Application (..))
 import Elephantom.Renderer.Present (Present (..))
 import Elephantom.Renderer.Pipeline (PipelineResource (..))
-import Elephantom.Renderer.Viewport (makeViewport)
 
 withSingleTimeCommands :: MonadIO m => Device -> CommandPool -> Queue -> (CommandBuffer -> IO ()) -> m ()
 withSingleTimeCommands device commandPool queue f = do
@@ -50,8 +49,15 @@ submitCommand :: MonadIO m
               -> V.Vector Present
               -> (CommandBuffer, Framebuffer)
               -> m ()
-submitCommand app@Application { bgRed, bgGreen, bgBlue } extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
-  let viewport = makeViewport app extent
+submitCommand Application { bgRed, bgGreen, bgBlue } extent@Extent2D {..} renderPass presents (commandBuffer, framebuffer) = do
+  let viewport = Viewport
+        { x = 0
+        , y = 0
+        , width = fromIntegral width
+        , height = fromIntegral height
+        , minDepth = 0
+        , maxDepth = 1
+        }
   let viewports = [ viewport ] :: V.Vector Viewport
   let scissors =
         [ Rect2D
