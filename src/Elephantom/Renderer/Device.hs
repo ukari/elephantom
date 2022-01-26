@@ -25,7 +25,9 @@ import Elephantom.Renderer.Util (promote)
 
 withDevice :: MonadResource m => PhysicalDevice -> "queueFamilyIndices" ::: V.Vector Word32 -> m Device
 withDevice phys indices = do
-  let extensions = [ KHR_SWAPCHAIN_EXTENSION_NAME ]
+  let extensions = [ KHR_SWAPCHAIN_EXTENSION_NAME
+                   --, KHR_MAINTENANCE1_EXTENSION_NAME -- Allow negative height to be specified in the VkViewport::height field
+                   ]
   let optionals =
         [ EXT_MEMORY_BUDGET_EXTENSION_NAME -- vmaGetBudget
         , KHR_DEDICATED_ALLOCATION_EXTENSION_NAME -- vma use it automatically, promoted to API_VERSION_1_1
