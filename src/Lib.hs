@@ -248,7 +248,7 @@ testAppCon = do
 testfont :: App sig m => m ()
 testfont = do
   dataBasePath <- dataPath <$> get @AppConfig
-  let fontfile = dataBasePath </> "font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
+  let fontfile = dataBasePath </> "font/NotoSerif-Regular.ttf"--"font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
   liftIO $ print fontfile
   res <- liftIO $ loadFontFile fontfile
   liftIO $ case res of
@@ -396,7 +396,7 @@ rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y))
 
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  let application@Application {..} = defaultApplication { width = 640, height = 480, fps = 12, bgRed = 64, bgGreen = 0, bgBlue = 0 } :: Application
+  let application@Application {..} = defaultApplication { width = 1000, height = 1000, fps = 12, bgRed = 0, bgGreen = 255, bgBlue = 0 } :: Application
 
   eventQueue <- liftIO newQueue
   withSDL
@@ -465,7 +465,7 @@ someFunc = runResourceT $ do
   cleanupMVar <- liftIO . newMVar $ (frameSync, commandBufferRes, swapchainRes)
   let ctx = Context {..}
   -- liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
-  liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner , contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
+  liftIO . flip Ex.finally (cleanupFrame device cleanupMVar >> foldMap cleanup ([ triangleCleaner, textureCleaner, contoursCleaner ] :: [ Cleaner ])) . S.drainWhile isJust . S.drop 1 . asyncly . minRate (fromIntegral fps) . maxRate (fromIntegral fps) . S.iterateM (maybe (pure Nothing) drawFrame) . pure . Just $ (ctx, frameSync, commandBufferRes, swapchainRes)
 
 loadTriangle :: MonadCleaner m => Application -> Vma.Allocator -> Device -> V.Vector Word32 -> ShaderResource -> PipelineResource -> m Present
 loadTriangle Application { width, height } allocator device queueFamilyIndices shaderRes pipelineRes = do
@@ -507,7 +507,7 @@ loadTriangle Application { width, height } allocator device queueFamilyIndices s
   let uniform = ShaderUniform
         { view = identity -- lookAt 0 0 (V3 0 0 (-1)) -- for 2D UI, no need for a view martix
         , proj = transpose $ ortho (0) (fromIntegral width) (0) (fromIntegral height) (fromIntegral (-maxBound::Int)) (fromIntegral (maxBound::Int))
-        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*0.5) (500/2*0.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 0.5)
+        , model = transpose $ mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 0 0 0) !*! rotateAt (V3 (500/2*2.5) (500/2*2.5) 0) (axisAngle (V3 0 0 1) (45/360*2*pi)) !*! (m33_to_m44 . scaled $ 2.5)
         }
   memCopy allocator uniformBufferAllocation uniform -- early free
   liftIO . print $ descriptorSetLayoutCreateInfos shaderRes
@@ -694,6 +694,9 @@ bContours = [[(99,0),(99,328),(99,656),(192,656),(285,656),(335,656),(376,647),(
 rContours :: [ VU.Vector (Int16, Int16) ]
 rContours = [[(100,0),(100,328),(100,656),(202,656),(304,656),(354,656),(396,646),(438,637),(468,615),(499,593),(516,558),(533,523),(533,472),(533,395),(493,349),(453,303),(386,286),(469,143),(553,0),(505,0),(458,0),(379,138),(300,277),(241,277),(183,277),(183,138),(183,0),(141,0),(100,0)],[(183,345),(237,345),(292,345),(369,345),(409,376),(450,408),(450,472),(450,537),(409,563),(369,589),(292,589),(237,589),(183,589),(183,467),(183,345)]]
 
+rContoursSerif :: [ VU.Vector (Int16, Int16) ]
+rContoursSerif = [[(1135,250),(1187,168),(1236,127),(1285,86),(1350,86),(1353,86),(1356,86),(1356,43),(1356,0),(1341,0),(1327,0),(1231,0),(1169,7),(1108,14),(1065,34),(1022,54),(991,90),(961,126),(926,184),(787,414),(649,645),(564,645),(479,645),(479,434),(479,223),(479,178),(492,150),(506,123),(529,109),(552,95),(582,90),(613,86),(647,86),(660,86),(674,86),(674,43),(674,0),(376,0),(78,0),(78,43),(78,86),(91,86),(104,86),(138,86),(168,90),(199,95),(222,109),(245,123),(258,150),(272,178),(272,223),(272,730),(272,1237),(272,1282),(258,1309),(245,1337),(222,1352),(199,1367),(168,1371),(138,1376),(104,1376),(91,1376),(78,1376),(78,1419),(78,1462),(353,1462),(629,1462),(895,1462),(1025,1363),(1155,1265),(1155,1067),(1155,985),(1128,923),(1102,862),(1059,817),(1016,772),(962,742),(908,712),(854,694),(994,472),(1135,250)],[(479,741),(551,741),(623,741),(713,741),(773,761),(833,781),(869,821),(905,861),(920,921),(936,981),(936,1061),(936,1143),(919,1200),(902,1258),(864,1294),(826,1331),(765,1347),(705,1364),(618,1364),(548,1364),(479,1364),(479,1052),(479,741)]]
+
 quadContours :: [ VU.Vector (Int16, Int16) ]
 quadContours = [VU.reverse [(100,0),(100,328),(100,656),(202,656),(304,656),(141,0),(100,0)]]
 
@@ -716,12 +719,12 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
   textureDescriptorSetResource <- Lib.withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes) acquireT
   let quadw = 1000 :: Float
   let quadh = 1000 :: Float
-  let triquadVertices = [ QuadVertex (V2 0 0) (V4 1 1 1 1)
-                      , QuadVertex (V2 quadw 0) (V4 0 0 0 1)
-                      , QuadVertex (V2 quadw quadh) (V4 1 1 1 1)
-                      , QuadVertex (V2 0 quadh) (V4 0 0 0 1)
-                      ] :: VS.Vector QuadVertex
-  triquadVerticesBuffer <- Lib.withVertexBuffer allocator triquadVertices acquireT
+  let quadVertices = [ QuadVertex (V2 0 0) (V4 (0.8) 0 0 1)
+                     , QuadVertex (V2 quadw 0) (V4 (0.8) 0 0  1)
+                     , QuadVertex (V2 quadw quadh) (V4 (0.8) 0 0  1)
+                     , QuadVertex (V2 0 quadh) (V4 (0.8) 0 0  1)
+                     ] :: VS.Vector QuadVertex
+  quadVerticesBuffer <- Lib.withVertexBuffer allocator quadVertices acquireT
 
   let texIndices = [ 0, 1, 2, 2, 3, 0 ] :: VS.Vector Word32
   indicesBuffer <- Lib.withIndexBuffer allocator texIndices acquireT
@@ -740,7 +743,7 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
   -- imageWriteDescriptorSet <- Lib.withCombinedImageSamplerDescriptorSet allocator phys device queueRes commandPoolRes textureDescriptorSetResource 2 1 textureFormat (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) (imageData pixels) acquireT
   let contoursTexelFormat = FORMAT_R16G16_SINT
   -- let contours = VS.map (\(Contour (V2 x1 y1) (V2 x2 y2) (V2 x3 y3)) -> Contour (V2 y1 ( x1)) (V2 y2 (x2)) (V2 y3 x3)) (flatContours rContours) :: VS.Vector Contour
-  let contours = flatContours rContours :: VS.Vector Contour
+  let contours = (flatContours rContoursSerif) :: VS.Vector Contour
   --let contours = flatContours quadContours :: VS.Vector Contour
   samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat contours acquireT
 
@@ -751,7 +754,7 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
     ] []
 
   pure Present
-    { vertexBuffers = [ triquadVerticesBuffer ]
+    { vertexBuffers = [ quadVerticesBuffer ]
     , indexBuffer = indicesBuffer
     , descriptorSets = descriptorSets (textureDescriptorSetResource :: DescriptorSetResource)
     , drawSize = fromIntegral . VS.length $ texIndices
@@ -893,29 +896,59 @@ withContoursShaderStages device = do
   void main() {
     //vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(0, 1080.0);
     vec2 pos = gl_FragCoord.xy;
+
+    if ( pos.x < 50
+      && pos.x > 0
+      && pos.y < 50
+      && pos.y > 0 ) {
+      outColor = vec4(1,1,0,1);
+      return;
+    }
+    if ( pos.x < 750
+      && pos.x > 700
+      && pos.y < 350
+      && pos.y > 300 ) {
+      outColor = vec4(0.8,0,0,1);
+      return;
+    }
     int texSize = textureSize(contours);
-    float windingNumber = 0;
+    float windingNumber = 0.0f;
     for (int i = 0; i < texSize; i += 3) {
-      ivec2 p0 = texelFetch(contours, i).xy;
-      ivec2 p1 = texelFetch(contours, i + 1).xy;
-      ivec2 p2 = texelFetch(contours, i + 2).xy;
+      vec2 p0 = texelFetch(contours, i).xy / 2048.0f * 1000.0f;
+      vec2 p1 = texelFetch(contours, i + 1).xy / 2048.0f * 1000.0f;
+      vec2 p2 = texelFetch(contours, i + 2).xy / 2048.0f * 1000.0f;
       windingNumber += countWindingNumberBezier2(p0 - pos, p1 - pos, p2 - pos);
       //outColor = vec4(p1/255.0, 0, 1);
       //break;
     }
-    outColor = vec4(vec3(clamp(1.0 - windingNumber, 0.0, 1.0)), 1.0);
+    float wn = clamp(windingNumber, 0.0f, 1.0f);
+    //outColor = 1.0f - vec4(wn * (1.0f - fragColor.xyz), 1.0f - (wn > 0.0f ? 1.0f : 0.0f) * fragColor.w);
+    if (wn > 0.0f) {
+      outColor = vec4(clamp(wn, fragColor.x, 1.0f) * fragColor.x, clamp(wn, fragColor.y, 1.0f) * fragColor.y, clamp(wn, fragColor.z, 1.0f) * fragColor.z, wn * fragColor.w);
+    } else {
+      outColor = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    }
+    //outColor = vec4(1.0f - wn * (1.0f - fragColor.xyz), (wn > 0.0f ? 1.0f : 0.0f) * fragColor.w);
   }
 
   float countWindingNumberBezier2(vec2 p0, vec2 p1, vec2 p2) {
-    uint multisampling = 1;
-    float wny = countWindingNumberBezier2Axis(p0, p1, p2);
-    float wnx = -countWindingNumberBezier2Axis(p0.yx, p1.yx, p2.yx);
+    int samplingNumber = 4;
+    float d = 1.0f / float(samplingNumber + 1);
+    float wny = 0.0f;
+    float wnx = 0.0f;
+    for (int i = 1; i <= samplingNumber; i += 1) {
+      vec2 dy = vec2(0.0f, float(i) * d - 0.5f);
+      wny += countWindingNumberBezier2Axis(p0 + dy, p1 + dy, p2 + dy);
+      wnx -= countWindingNumberBezier2Axis(p0.yx + dy, p1.yx + dy, p2.yx + dy);
+    }
+    //wny += countWindingNumberBezier2Axis(p0, p1, p2);
+    //wnx -= countWindingNumberBezier2Axis(p0.yx, p1.yx, p2.yx);
     /*float wnyr = -countWindingNumberBezier2Axis(p0 * vec2(-1,1), p1*vec2(-1,1), p2*vec2(-1,1));
     float wnxr = countWindingNumberBezier2Axis(p0.yx * vec2(1,-1), p1.yx* vec2(1,-1), p2.yx*vec2(1,-1));
 
     return (wny + wnx + wnyr + wnxr) / 4.0;
     */
-    return (wny + wnx) / 2.0;
+    return (wny + wnx) / (2.0f * float(samplingNumber));
     //return wnx;
   }
 
@@ -924,8 +957,8 @@ withContoursShaderStages device = do
     vec2 b = p0 - p1;
     vec2 c = p0;
     float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
-    if (abs(a.y) < 1e-5) {
-      if (abs(b.y) < 1e-5) {
+    if (abs(a.y) < 1e-5 * 2048) {
+      if (abs(b.y) < 1e-5 * 2048) {
         return vec2(-1, -1);
       }
       float t0 = 0.5f * c.y / b.y;
