@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9df3b32c7960587ac9a0165ae804d20ff6d2362c2321bb7828b9b2c1bae6f942
+-- hash: 48236aa7f44c38cf5fbf8a32859fbba6b3f90deefd4afbc6417fb858be0d7d59
 
 name:           elephantom
 version:        0.1.0.0
@@ -183,8 +183,6 @@ executable elephantom
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -fplugin=Foreign.Storable.Generic.Plugin -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1
-  c-sources:
-      src/test.c
   build-depends:
       Cabal
     , base >=4.7 && <5
@@ -202,8 +200,6 @@ test-suite elephantom-test
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  c-sources:
-      src/test.c
   build-depends:
       Cabal
     , base >=4.7 && <5
