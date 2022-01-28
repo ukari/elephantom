@@ -30,6 +30,9 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- foreign
+{-# LANGUAGE ForeignFunctionInterface #-}
+
 module Lib where
 
 import qualified SDL
@@ -394,9 +397,13 @@ ortho2D left right bottom top = ortho' left right bottom top (fromIntegral (-max
 rotateAt :: (Num a, Epsilon a, Floating a) => V3 a -> Quaternion a -> M44 a
 rotateAt (V3 x y z) quaternion = mkTransformation quaternion (V3 (0+(x)) (0+(y)) (0+(z))) !*! mkTransformation (axisAngle (V3 0 0 1) (0)) (V3 (-x) (-y) (-z))
 
+foreign import ccall "test_add" test_foreign_add :: Int -> Int -> IO Int
+
 someFunc :: IO ()
 someFunc = runResourceT $ do
-  let application@Application {..} = defaultApplication { width = 1000, height = 1000, fps = 12, bgRed = 0, bgGreen = 255, bgBlue = 0 } :: Application
+  fres <- liftIO $ test_foreign_add 1 2
+  liftIO $ print fres
+  let application@Application {..} = defaultApplication { vkDebug = False, width = 1000, height = 1000, fps = 12, bgRed = 255, bgGreen = 255, bgBlue = 255 } :: Application
 
   eventQueue <- liftIO newQueue
   withSDL
@@ -710,6 +717,9 @@ flatContours = VS.concat . map (`flatClosedContour` [])
     toContour [ p1, p2, p3 ] = Contour (uncurry V2 p1) (uncurry V2 p2) (uncurry V2 p3)
     toContour _ = error "invalid points number for contour"
 
+makeBands :: VS.Vector Contour -> Int -> Int -> [ VS.Vector Contour ] 
+makeBands contours unitsPerEm treshold = undefined
+
 -- todo
 -- add texture box
 -- add texture for contours
@@ -895,15 +905,15 @@ withContoursShaderStages device = do
   */
   void main() {
     //vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(0, 1080.0);
-    vec2 pos = gl_FragCoord.xy;
+    vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(0, 1000.0);
 
-    if ( pos.x < 50
+    /*if ( pos.x < 50
       && pos.x > 0
       && pos.y < 50
       && pos.y > 0 ) {
       outColor = vec4(1,1,0,1);
       return;
-    }
+    }*/
     if ( pos.x < 750
       && pos.x > 700
       && pos.y < 350

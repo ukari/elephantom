@@ -10,6 +10,9 @@ extra-source-files:
 - README.md
 - ChangeLog.md
 
+c-sources:
+- src/*.c
+
 ## only used for dev
 data-dir: "assets"
 data-files:
