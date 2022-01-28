@@ -27,7 +27,7 @@ import Elephantom.Renderer.Util (promote)
 withInst :: MonadResource m => Application -> SDL.Window -> m Instance
 withInst Application {..} window = do
   extensionsCString <- SDL.vkGetInstanceExtensions window
-  extensions <- liftIO $ traverse packCString extensionsCString
+  extensions <- liftIO . traverse packCString $ extensionsCString
   let optionals =
         [ KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME -- the dependency of device extension EXT_MEMORY_BUDGET_EXTENSION_NAME
         ]
@@ -35,5 +35,5 @@ withInst Application {..} window = do
     then createDebugInstanceFromRequirements
     else createInstanceFromRequirements) (require extensions) (require optionals) zero { applicationInfo = Just appInfo }
   where
-    require :: "extensions" ::: [ByteString] -> [InstanceRequirement]
+    require :: "extensions" ::: [ ByteString ] -> [ InstanceRequirement ]
     require = map (flip (RequireInstanceExtension Nothing) minBound) . promote
