@@ -79,6 +79,7 @@ library:
   - massiv-io >= 0.4.1.0
   - JuicyPixels
   - FontyFruity
+  - freetype2
   - Rasterific
   - fused-effects
   - fused-effects-exceptions

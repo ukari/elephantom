@@ -55,6 +55,7 @@ import qualified Codec.Picture as JP
 import Graphics.Rasterific (renderDrawing, rectangle, fill)
 import Graphics.Rasterific.Texture (uniformTexture)
 import Graphics.Text.TrueType (RawGlyph (..), Font, loadFontFile, decodeFont, descriptorOf, _descriptorFamilyName, getCharacterGlyphsAndMetrics, unitsPerEm)
+import FreeType
 
 import Language.Haskell.TH hiding (location)
 import Type.Reflection (SomeTypeRep, splitApps, typeOf)
@@ -69,6 +70,7 @@ import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
 import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), Epsilon, transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, m33_to_m44, scaled)
 import qualified Linear
 --import Data.Acquire (Acquire, mkAcquire)
+import Data.Char (digitToInt)
 import Data.String (IsString)
 import Data.Word (Word32)
 import Data.Int (Int16)
@@ -239,13 +241,59 @@ runTestApp = do
   env <- liftIO getEnviornment
   appConfig <- liftIO $ detectAppConfig env
   liftIO $ print appConfig
-  evalState appConfig testfont
+  -- evalState appConfig testfont
+  evalState appConfig testfreetype
 
 testAppCon :: App sig m => m ()
 testAppCon = do
   config <- binPath <$> get @AppConfig
   liftIO $ print config
   liftIO $ print "hi"
+  pure ()
+
+testfreetype :: App sig m => m ()
+testfreetype = do
+  dataBasePath <- dataPath <$> get @AppConfig
+  let fontfile = dataBasePath </> "font/NotoSansMonoCJKsc-Regular.otf"
+  liftIO $ print fontfile
+  ft_library <- liftIO ft_Init_FreeType
+  ft_face <- liftIO . ft_New_Face ft_library fontfile $ 0
+  liftIO $ print $ "ft_face: " <> show ft_face
+  face <- liftIO $ peek ft_face
+  let ft_glyph_slot = frGlyph face
+  slot <- liftIO $ peek ft_glyph_slot
+  let unitsPerEm = frUnits_per_EM face
+  liftIO $ print $ "unitsPerEm" <> show unitsPerEm
+  liftIO $ ft_Set_Pixel_Sizes ft_face (fromIntegral unitsPerEm) (fromIntegral unitsPerEm)
+  let charcode = fromIntegral . fromEnum $ '璃'
+  glyph_index <- liftIO . ft_Get_Char_Index ft_face $ charcode
+  liftIO $ print $ "glyph index: " <> show glyph_index
+  liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
+  let advance = gsrAdvance slot
+  liftIO $ print $ "x advance: " <> show (vX advance)
+  liftIO $ print $ "y advance: " <> show (vY advance)
+  let format = gsrFormat slot
+  liftIO $ print $ "gsrFormat: " <> show format
+  let outline = gsrOutline slot
+  let contoursN = (oN_contours outline)
+  --contours <- liftIO $ peek (oContours outline)
+  liftIO $ print contoursN
+  -- x <- liftIO $ ft_With_Glyph ft_library FT_GLYPH_FORMAT_OUTLINE $ \ft_glyph -> do
+  --   glyph <- peek ft_glyph
+  --   --print $ "grFormat: " <> show (grFormat glyph)
+  --   let advance = grAdvance glyph
+  --   print $ "x advance: " <> show (vX advance)
+  --   print $ "y advance: " <> show (vY advance)
+  --   pure 1
+  liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
+  x2 <- liftIO $ ft_Outline_With ft_library maxBound maxBound  $ \ft_outline -> do
+    outline <- peek ft_outline
+    let contours = oContours outline
+    print contours
+    pure 2
+  
+  liftIO $ ft_Done_Face ft_face
+  liftIO $ ft_Done_FreeType ft_library
   pure ()
 
 testfont :: App sig m => m ()

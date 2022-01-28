@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 48236aa7f44c38cf5fbf8a32859fbba6b3f90deefd4afbc6417fb858be0d7d59
+-- hash: 89aba84c403764c77868351c111815f59a326e3e07623bd21a803cfb7a4165fe
 
 name:           elephantom
 version:        0.1.0.0
@@ -139,6 +139,7 @@ library
     , derive-storable
     , directory
     , filepath
+    , freetype2
     , fused-effects
     , fused-effects-exceptions
     , gitrev
