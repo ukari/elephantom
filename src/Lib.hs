@@ -254,21 +254,23 @@ testAppCon = do
 testfreetype :: App sig m => m ()
 testfreetype = do
   dataBasePath <- dataPath <$> get @AppConfig
-  let fontfile = dataBasePath </> "font/NotoSansMonoCJKsc-Regular.otf"
+  let fontfile = dataBasePath </> "font/NotoSerif-Regular.ttf" --"font/NotoSansMonoCJKsc-Regular.otf"
   liftIO $ print fontfile
   ft_library <- liftIO ft_Init_FreeType
   ft_face <- liftIO . ft_New_Face ft_library fontfile $ 0
   liftIO $ print $ "ft_face: " <> show ft_face
   face <- liftIO $ peek ft_face
   let ft_glyph_slot = frGlyph face
-  slot <- liftIO $ peek ft_glyph_slot
+  --slot <- liftIO $ peek ft_glyph_slot
   let unitsPerEm = frUnits_per_EM face
   liftIO $ print $ "unitsPerEm" <> show unitsPerEm
-  liftIO $ ft_Set_Pixel_Sizes ft_face (fromIntegral unitsPerEm) (fromIntegral unitsPerEm)
+  --liftIO $ ft_Set_Char_Size ft_face 0 (16*64) 300 300
+  liftIO $ ft_Set_Pixel_Sizes ft_face (fromIntegral 0) (fromIntegral 16)
   let charcode = fromIntegral . fromEnum $ '璃'
   glyph_index <- liftIO . ft_Get_Char_Index ft_face $ charcode
   liftIO $ print $ "glyph index: " <> show glyph_index
   liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
+  slot <- liftIO $ peek ft_glyph_slot
   let advance = gsrAdvance slot
   liftIO $ print $ "x advance: " <> show (vX advance)
   liftIO $ print $ "y advance: " <> show (vY advance)
@@ -276,8 +278,9 @@ testfreetype = do
   liftIO $ print $ "gsrFormat: " <> show format
   let outline = gsrOutline slot
   let contoursN = (oN_contours outline)
+  let pointsN = (oN_points outline)
   --contours <- liftIO $ peek (oContours outline)
-  liftIO $ print contoursN
+  liftIO $ print $ "contoursN: " <> show contoursN
   -- x <- liftIO $ ft_With_Glyph ft_library FT_GLYPH_FORMAT_OUTLINE $ \ft_glyph -> do
   --   glyph <- peek ft_glyph
   --   --print $ "grFormat: " <> show (grFormat glyph)
@@ -285,12 +288,14 @@ testfreetype = do
   --   print $ "x advance: " <> show (vX advance)
   --   print $ "y advance: " <> show (vY advance)
   --   pure 1
-  liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
-  x2 <- liftIO $ ft_Outline_With ft_library maxBound maxBound  $ \ft_outline -> do
-    outline <- peek ft_outline
-    let contours = oContours outline
-    print contours
-    pure 2
+  -- liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
+  -- x2 <- liftIO $ ft_Outline_With ft_library (fromIntegral pointsN) (fromIntegral contoursN) $ \ft_outline -> do
+  --   outline <- peek ft_outline
+  --   let contours = oContours outline
+  --   let contoursN = (oN_contours outline)
+  --   print $ "contoursN: " <> show contoursN
+  --   print contours
+  --   pure 2
   
   liftIO $ ft_Done_Face ft_face
   liftIO $ ft_Done_FreeType ft_library
