@@ -66,6 +66,7 @@ import qualified Foreign.Storable as Storable
 import Foreign.Storable.Generic (GStorable, gsizeOf, galignment, peek)
 import Foreign.Ptr (Ptr, castPtr)
 import Foreign.Marshal.Utils (copyBytes, with, fillBytes)
+import Foreign.Marshal.Array (peekArray)
 
 import Linear ((!*!), V2 (..), V3 (..), V4 (..), M44, Quaternion (..), Epsilon, transpose, identity, lookAt, ortho, inverseOrtho, mkTransformation, axisAngle, m33_to_m44, scaled)
 import qualified Linear
@@ -241,8 +242,8 @@ runTestApp = do
   env <- liftIO getEnviornment
   appConfig <- liftIO $ detectAppConfig env
   liftIO $ print appConfig
-  -- evalState appConfig testfont
-  evalState appConfig testfreetype
+  evalState appConfig testfont
+  -- evalState appConfig testfreetype
 
 testAppCon :: App sig m => m ()
 testAppCon = do
@@ -254,7 +255,7 @@ testAppCon = do
 testfreetype :: App sig m => m ()
 testfreetype = do
   dataBasePath <- dataPath <$> get @AppConfig
-  let fontfile = dataBasePath </> "font/NotoSerif-Regular.ttf" --"font/NotoSansMonoCJKsc-Regular.otf"
+  let fontfile = dataBasePath </> "font/SourceCodePro-Regular.ttf"--"font/NotoSansMonoCJKsc-Regular.otf"
   liftIO $ print fontfile
   ft_library <- liftIO ft_Init_FreeType
   ft_face <- liftIO . ft_New_Face ft_library fontfile $ 0
@@ -265,38 +266,31 @@ testfreetype = do
   let unitsPerEm = frUnits_per_EM face
   liftIO $ print $ "unitsPerEm" <> show unitsPerEm
   --liftIO $ ft_Set_Char_Size ft_face 0 (16*64) 300 300
-  liftIO $ ft_Set_Pixel_Sizes ft_face (fromIntegral 0) (fromIntegral 16)
-  let charcode = fromIntegral . fromEnum $ '璃'
+  liftIO $ ft_Set_Pixel_Sizes ft_face (fromIntegral unitsPerEm) (fromIntegral unitsPerEm)
+  let charcode = fromIntegral . fromEnum $ 'B'
   glyph_index <- liftIO . ft_Get_Char_Index ft_face $ charcode
   liftIO $ print $ "glyph index: " <> show glyph_index
   liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
   slot <- liftIO $ peek ft_glyph_slot
   let advance = gsrAdvance slot
-  liftIO $ print $ "x advance: " <> show (vX advance)
-  liftIO $ print $ "y advance: " <> show (vY advance)
+  liftIO $ print $ "x advance: " <> show (vX advance `div` 64)
+  liftIO $ print $ "y advance: " <> show (vY advance `div` 64)
   let format = gsrFormat slot
   liftIO $ print $ "gsrFormat: " <> show format
   let outline = gsrOutline slot
-  let contoursN = (oN_contours outline)
-  let pointsN = (oN_points outline)
-  --contours <- liftIO $ peek (oContours outline)
+  let contoursN = oN_contours outline
   liftIO $ print $ "contoursN: " <> show contoursN
-  -- x <- liftIO $ ft_With_Glyph ft_library FT_GLYPH_FORMAT_OUTLINE $ \ft_glyph -> do
-  --   glyph <- peek ft_glyph
-  --   --print $ "grFormat: " <> show (grFormat glyph)
-  --   let advance = grAdvance glyph
-  --   print $ "x advance: " <> show (vX advance)
-  --   print $ "y advance: " <> show (vY advance)
-  --   pure 1
-  -- liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
-  -- x2 <- liftIO $ ft_Outline_With ft_library (fromIntegral pointsN) (fromIntegral contoursN) $ \ft_outline -> do
-  --   outline <- peek ft_outline
-  --   let contours = oContours outline
-  --   let contoursN = (oN_contours outline)
-  --   print $ "contoursN: " <> show contoursN
-  --   print contours
-  --   pure 2
-  
+  contours <- liftIO $ peekArray (fromIntegral contoursN) (oContours outline)
+  liftIO $ print contours
+  let pointsN = oN_points outline
+  points <- liftIO $ peekArray (fromIntegral pointsN) (oPoints outline)
+  liftIO $ print $ "pointsN: " <> show pointsN
+  liftIO $ print $ map (\p -> (vX p `div` 64, vY p `div` 64)) points
+  let controlN = gsrControl_len slot
+  liftIO $ print $ "controlN: " <> show controlN
+  tags <- liftIO $ peekArray (fromIntegral pointsN) (oTags outline)
+  liftIO $ print $ "tags: " <> show tags
+
   liftIO $ ft_Done_Face ft_face
   liftIO $ ft_Done_FreeType ft_library
   pure ()
@@ -304,7 +298,7 @@ testfreetype = do
 testfont :: App sig m => m ()
 testfont = do
   dataBasePath <- dataPath <$> get @AppConfig
-  let fontfile = dataBasePath </> "font/NotoSerif-Regular.ttf"--"font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
+  let fontfile = dataBasePath </> "font/NotoSansMonoCJKsc-Regular.ttf"--"font/NotoSerif-Regular.ttf"--"font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
   liftIO $ print fontfile
   res <- liftIO $ loadFontFile fontfile
   liftIO $ case res of
@@ -316,13 +310,13 @@ testfont = do
 
 loadfont :: Font -> IO ()
 loadfont font = do
-  let (code, glyphs) = getCharacterGlyphsAndMetrics font 'R'
-  print code
+  let (advance, glyphs) = getCharacterGlyphsAndMetrics font '璃'
+  print $ "advance: " <> show advance
   forM glyphs $ \(RawGlyph scales index contours) -> do
     print $ "scales: " <> show scales
     print $ "index: " <> show index
     print $ "contours: " <> show contours
-    print $ "contours dot count: " <> show (VU.length <$> contours)
+    print $ "contours points count: " <> show (VU.length <$> contours)
     print $ "unitsPerEm: " <> show (unitsPerEm font)
   pure ()
 
@@ -760,6 +754,9 @@ rContoursSerif = [[(1135,250),(1187,168),(1236,127),(1285,86),(1350,86),(1353,86
 quadContours :: [ VU.Vector (Int16, Int16) ]
 quadContours = [VU.reverse [(100,0),(100,328),(100,656),(202,656),(304,656),(141,0),(100,0)]]
 
+liContours :: [ VU.Vector (Int16, Int16) ]
+liContours = [[(232,402),(232,287),(232,173),(260,181),(288,189),(317,197),(345,205),(349,171),(353,138),(276,116),(197,94),(118,72),(53,55),(44,89),(36,124),(91,136),(164,156),(164,279),(164,402),(111,402),(58,402),(58,435),(58,468),(111,468),(164,468),(164,578),(164,688),(105,688),(46,688),(46,721),(46,755),(191,755),(337,755),(337,721),(337,688),(284,688),(232,688),(232,578),(232,468),(277,468),(322,468),(322,435),(322,402),(277,402),(232,402)],[(929,297),(929,149),(929,2),(929,-25),(921,-39),(914,-53),(894,-61),(873,-68),(839,-70),(805,-71),(755,-71),(752,-57),(745,-42),(739,-26),(732,-13),(770,-14),(801,-15),(832,-15),(842,-14),(853,-14),(856,-11),(859,-7),(859,2),(859,117),(859,233),(747,233),(635,233),(619,200),(603,169),(587,138),(570,109),(652,119),(734,130),(725,147),(715,162),(706,178),(698,193),(721,201),(745,209),(761,184),(777,154),(794,125),(808,97),(822,70),(830,50),(805,39),(781,29),(777,40),(771,53),(765,67),(757,82),(680,71),(633,64),(586,57),(560,52),(535,48),(524,44),(513,41),(507,37),(504,48),(497,67),(490,87),(485,100),(497,103),(508,118),(519,133),(532,156),(538,165),(548,185),(558,206),(570,233),(511,233),(453,233),(453,78),(453,-76),(418,-76),(384,-76),(384,110),(384,297),(490,297),(596,297),(603,314),(609,332),(615,350),(621,367),(521,367),(421,367),(421,506),(421,646),(453,646),(486,646),(486,536),(486,427),(654,427),(822,427),(822,536),(822,646),(856,646),(890,646),(890,506),(890,367),(791,367),(692,367),(685,350),(678,332),(671,314),(663,297),(796,297),(929,297)],[(796,483),(778,466),(760,449),(743,463),(717,482),(692,502),(663,523),(598,472),(538,436),(532,444),(520,456),(509,469),(500,476),(530,493),(561,512),(592,531),(622,552),(597,571),(570,588),(544,606),(521,622),(538,637),(556,652),(580,636),(606,618),(633,600),(660,582),(683,600),(704,620),(725,640),(742,659),(766,649),(790,640),(771,618),(748,596),(726,575),(701,553),(730,534),(754,515),(778,497),(796,483)],[(694,745),(819,745),(945,745),(945,712),(945,680),(654,680),(364,680),(364,712),(364,745),(490,745),(617,745),(610,764),(601,785),(593,806),(584,822),(617,831),(650,840),(661,819),(673,793),(685,767),(694,745)]]
+
 flatContours :: [ VU.Vector (Int16, Int16) ] -> VS.Vector Contour 
 flatContours = VS.concat . map (`flatClosedContour` [])
   where
@@ -806,8 +803,9 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
   -- imageWriteDescriptorSet <- Lib.withCombinedImageSamplerDescriptorSet allocator phys device queueRes commandPoolRes textureDescriptorSetResource 2 1 textureFormat (fromIntegral . JP.imageWidth $ pixels) (fromIntegral . JP.imageHeight $ pixels) (imageData pixels) acquireT
   let contoursTexelFormat = FORMAT_R16G16_SINT
   -- let contours = VS.map (\(Contour (V2 x1 y1) (V2 x2 y2) (V2 x3 y3)) -> Contour (V2 y1 ( x1)) (V2 y2 (x2)) (V2 y3 x3)) (flatContours rContours) :: VS.Vector Contour
-  let contours = (flatContours rContoursSerif) :: VS.Vector Contour
+  --let contours = (flatContours rContoursSerif) :: VS.Vector Contour
   --let contours = flatContours quadContours :: VS.Vector Contour
+  let contours = (flatContours liContours) :: VS.Vector Contour
   samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat contours acquireT
 
   updateDescriptorSets device
