@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6e3b93abe673263107012bc5f82d4631775f1c7e53109f67969bb0a61ead14e7
+-- hash: 4ca31709fb5f36d800c7f96694beec1fdf47f7b8b658241d2e0b25e431833e46
 
 name:           elephantom
 version:        0.1.0.0
@@ -21,6 +21,8 @@ extra-source-files:
     README.md
     ChangeLog.md
 data-files:
+    font/NotoSansCJKsc-Regular.otf
+    font/NotoSansCJKsc-Regular.ttf
     font/NotoSansMonoCJKsc-Regular.otf
     font/NotoSansMonoCJKsc-Regular.ttf
     font/NotoSerif-Regular.ttf

@@ -242,20 +242,20 @@ runTestApp = do
   env <- liftIO getEnviornment
   appConfig <- liftIO $ detectAppConfig env
   liftIO $ print appConfig
-  evalState appConfig testfont
-  -- evalState appConfig testfreetype
+  --evalState appConfig testfont
+  evalState appConfig testfreetype
 
 testAppCon :: App sig m => m ()
 testAppCon = do
   config <- binPath <$> get @AppConfig
   liftIO $ print config
-  liftIO $ print "hi"
+  liftIO $ print @String "hi"
   pure ()
 
 testfreetype :: App sig m => m ()
 testfreetype = do
   dataBasePath <- dataPath <$> get @AppConfig
-  let fontfile = dataBasePath </> "font/SourceCodePro-Regular.ttf"--"font/NotoSansMonoCJKsc-Regular.otf"
+  let fontfile = dataBasePath </> "font/NotoSansCJKsc-Regular.ttf"--"font/SourceCodePro-Regular.ttf"--"font/NotoSansMonoCJKsc-Regular.otf"
   liftIO $ print fontfile
   ft_library <- liftIO ft_Init_FreeType
   ft_face <- liftIO . ft_New_Face ft_library fontfile $ 0
@@ -267,7 +267,7 @@ testfreetype = do
   liftIO $ print $ "unitsPerEm" <> show unitsPerEm
   --liftIO $ ft_Set_Char_Size ft_face 0 (16*64) 300 300
   liftIO $ ft_Set_Pixel_Sizes ft_face (fromIntegral unitsPerEm) (fromIntegral unitsPerEm)
-  let charcode = fromIntegral . fromEnum $ 'B'
+  let charcode = fromIntegral . fromEnum $ '璃'
   glyph_index <- liftIO . ft_Get_Char_Index ft_face $ charcode
   liftIO $ print $ "glyph index: " <> show glyph_index
   liftIO $ ft_Load_Glyph ft_face glyph_index FT_LOAD_NO_BITMAP
@@ -278,6 +278,11 @@ testfreetype = do
   let format = gsrFormat slot
   liftIO $ print $ "gsrFormat: " <> show format
   let outline = gsrOutline slot
+  ft_bbox <- liftIO . with outline $ \ft_outline -> ft_Outline_Get_BBox ft_outline
+  liftIO $ print $ "bbXMin: " <> show (bbXMin ft_bbox `div` 64)
+  liftIO $ print $ "bbYMin: " <> show (bbYMin ft_bbox `div` 64)
+  liftIO $ print $ "bbXMax: " <> show (bbXMax ft_bbox `div` 64)
+  liftIO $ print $ "bbYMax: " <> show (bbYMax ft_bbox `div` 64)
   let contoursN = oN_contours outline
   liftIO $ print $ "contoursN: " <> show contoursN
   contours <- liftIO $ peekArray (fromIntegral contoursN) (oContours outline)
@@ -298,7 +303,7 @@ testfreetype = do
 testfont :: App sig m => m ()
 testfont = do
   dataBasePath <- dataPath <$> get @AppConfig
-  let fontfile = dataBasePath </> "font/NotoSansMonoCJKsc-Regular.ttf"--"font/NotoSerif-Regular.ttf"--"font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
+  let fontfile = dataBasePath </> "font/NotoSansCJKsc-Regular.ttf"--"font/NotoSerif-Regular.ttf"--"font/SourceCodePro-Regular.ttf" -- "font/NotoSansMonoCJKsc-Regular.otf"
   liftIO $ print fontfile
   res <- liftIO $ loadFontFile fontfile
   liftIO $ case res of
@@ -754,18 +759,42 @@ rContoursSerif = [[(1135,250),(1187,168),(1236,127),(1285,86),(1350,86),(1353,86
 quadContours :: [ VU.Vector (Int16, Int16) ]
 quadContours = [VU.reverse [(100,0),(100,328),(100,656),(202,656),(304,656),(141,0),(100,0)]]
 
+liContoursMono :: [ VU.Vector (Int16, Int16) ]
+liContoursMono = [[(232,402),(232,287),(232,173),(260,181),(288,189),(317,197),(345,205),(349,171),(353,138),(276,116),(197,94),(118,72),(53,55),(44,89),(36,124),(91,136),(164,156),(164,279),(164,402),(111,402),(58,402),(58,435),(58,468),(111,468),(164,468),(164,578),(164,688),(105,688),(46,688),(46,721),(46,755),(191,755),(337,755),(337,721),(337,688),(284,688),(232,688),(232,578),(232,468),(277,468),(322,468),(322,435),(322,402),(277,402),(232,402)],[(929,297),(929,149),(929,2),(929,-25),(921,-39),(914,-53),(894,-61),(873,-68),(839,-70),(805,-71),(755,-71),(752,-57),(745,-42),(739,-26),(732,-13),(770,-14),(801,-15),(832,-15),(842,-14),(853,-14),(856,-11),(859,-7),(859,2),(859,117),(859,233),(747,233),(635,233),(619,200),(603,169),(587,138),(570,109),(652,119),(734,130),(725,147),(715,162),(706,178),(698,193),(721,201),(745,209),(761,184),(777,154),(794,125),(808,97),(822,70),(830,50),(805,39),(781,29),(777,40),(771,53),(765,67),(757,82),(680,71),(633,64),(586,57),(560,52),(535,48),(524,44),(513,41),(507,37),(504,48),(497,67),(490,87),(485,100),(497,103),(508,118),(519,133),(532,156),(538,165),(548,185),(558,206),(570,233),(511,233),(453,233),(453,78),(453,-76),(418,-76),(384,-76),(384,110),(384,297),(490,297),(596,297),(603,314),(609,332),(615,350),(621,367),(521,367),(421,367),(421,506),(421,646),(453,646),(486,646),(486,536),(486,427),(654,427),(822,427),(822,536),(822,646),(856,646),(890,646),(890,506),(890,367),(791,367),(692,367),(685,350),(678,332),(671,314),(663,297),(796,297),(929,297)],[(796,483),(778,466),(760,449),(743,463),(717,482),(692,502),(663,523),(598,472),(538,436),(532,444),(520,456),(509,469),(500,476),(530,493),(561,512),(592,531),(622,552),(597,571),(570,588),(544,606),(521,622),(538,637),(556,652),(580,636),(606,618),(633,600),(660,582),(683,600),(704,620),(725,640),(742,659),(766,649),(790,640),(771,618),(748,596),(726,575),(701,553),(730,534),(754,515),(778,497),(796,483)],[(694,745),(819,745),(945,745),(945,712),(945,680),(654,680),(364,680),(364,712),(364,745),(490,745),(617,745),(610,764),(601,785),(593,806),(584,822),(617,831),(650,840),(661,819),(673,793),(685,767),(694,745)]]
+
 liContours :: [ VU.Vector (Int16, Int16) ]
 liContours = [[(232,402),(232,287),(232,173),(260,181),(288,189),(317,197),(345,205),(349,171),(353,138),(276,116),(197,94),(118,72),(53,55),(44,89),(36,124),(91,136),(164,156),(164,279),(164,402),(111,402),(58,402),(58,435),(58,468),(111,468),(164,468),(164,578),(164,688),(105,688),(46,688),(46,721),(46,755),(191,755),(337,755),(337,721),(337,688),(284,688),(232,688),(232,578),(232,468),(277,468),(322,468),(322,435),(322,402),(277,402),(232,402)],[(929,297),(929,149),(929,2),(929,-25),(921,-39),(914,-53),(894,-61),(873,-68),(839,-70),(805,-71),(755,-71),(752,-57),(745,-42),(739,-26),(732,-13),(770,-14),(801,-15),(832,-15),(842,-14),(853,-14),(856,-11),(859,-7),(859,2),(859,117),(859,233),(747,233),(635,233),(619,200),(603,169),(587,138),(570,109),(652,119),(734,130),(725,147),(715,162),(706,178),(698,193),(721,201),(745,209),(761,184),(777,154),(794,125),(808,97),(822,70),(830,50),(805,39),(781,29),(777,40),(771,53),(765,67),(757,82),(680,71),(633,64),(586,57),(560,52),(535,48),(524,44),(513,41),(507,37),(504,48),(497,67),(490,87),(485,100),(497,103),(508,118),(519,133),(532,156),(538,165),(548,185),(558,206),(570,233),(511,233),(453,233),(453,78),(453,-76),(418,-76),(384,-76),(384,110),(384,297),(490,297),(596,297),(603,314),(609,332),(615,350),(621,367),(521,367),(421,367),(421,506),(421,646),(453,646),(486,646),(486,536),(486,427),(654,427),(822,427),(822,536),(822,646),(856,646),(890,646),(890,506),(890,367),(791,367),(692,367),(685,350),(678,332),(671,314),(663,297),(796,297),(929,297)],[(796,483),(778,466),(760,449),(743,463),(717,482),(692,502),(663,523),(598,472),(538,436),(532,444),(520,456),(509,469),(500,476),(530,493),(561,512),(592,531),(622,552),(597,571),(570,588),(544,606),(521,622),(538,637),(556,652),(580,636),(606,618),(633,600),(660,582),(683,600),(704,620),(725,640),(742,659),(766,649),(790,640),(771,618),(748,596),(726,575),(701,553),(730,534),(754,515),(778,497),(796,483)],[(694,745),(819,745),(945,745),(945,712),(945,680),(654,680),(364,680),(364,712),(364,745),(490,745),(617,745),(610,764),(601,785),(593,806),(584,822),(617,831),(650,840),(661,819),(673,793),(685,767),(694,745)]]
 
-flatContours :: [ VU.Vector (Int16, Int16) ] -> VS.Vector Contour 
-flatContours = VS.concat . map (`flatClosedContour` [])
+flatContours :: [ VU.Vector (Int16, Int16) ] -> [ Contour ] 
+flatContours = concat . map (`flatClosedContour` [])
   where
-    flatClosedContour :: VU.Vector (Int16, Int16) -> [ Contour ] -> VS.Vector Contour
-    flatClosedContour ((< 3) . VU.length -> True) acc = VS.fromList . reverse $ acc
+    flatClosedContour :: VU.Vector (Int16, Int16) -> [ Contour ] -> [ Contour ]
+    flatClosedContour ((< 3) . VU.length -> True) acc = reverse $ acc
     flatClosedContour rest acc = flatClosedContour (VU.drop 2 rest) ((toContour . VU.toList . VU.take 3 $ rest) : acc)
     toContour :: [ (Int16, Int16) ] -> Contour
     toContour [ p1, p2, p3 ] = Contour (uncurry V2 p1) (uncurry V2 p2) (uncurry V2 p3)
     toContour _ = error "invalid points number for contour"
+
+extractYBoundings :: (Int16 -> Int16 -> Int16) -> [ Contour ] -> [ (V2 Int16) ]
+extractYBoundings sm = map (\(i, (Contour (V2 _x0 y0) (V2 _x1 y1) (V2 _x2 y2))) -> V2 (sm (sm y0 y1) y2) (fromIntegral i)) . zip [ 0 .. ]
+
+extractXBoundings :: (Int16 -> Int16 -> Int16) -> [ Contour ] -> [ (V2 Int16) ]
+extractXBoundings sm = map (\(i, (Contour (V2 x0 _y0) (V2 x1 _y1) (V2 x2 _y2))) -> V2 (sm (sm x0 x1) x2) (fromIntegral i)) . zip [ 0 .. ]
+
+makeBoundings :: ([ Contour ] -> [ (V2 Int16) ]) -> [ Contour ] -> VS.Vector (V2 Int16)
+makeBoundings em =  VS.fromList . sortOn (\(V2 v _i) -> v) . em
+
+makeYMaxBoundings :: [ Contour ] -> VS.Vector (V2 Int16)
+makeYMaxBoundings = makeBoundings (extractYBoundings max)
+
+makeYMinBoundings :: [ Contour ] -> VS.Vector (V2 Int16)
+makeYMinBoundings = makeBoundings (extractYBoundings min)
+
+makeXMaxBoundings :: [ Contour ] -> VS.Vector (V2 Int16)
+makeXMaxBoundings = makeBoundings (extractXBoundings max)
+
+makeXMinBoundings :: [ Contour ] -> VS.Vector (V2 Int16)
+makeXMinBoundings = makeBoundings (extractXBoundings min)
 
 makeBands :: VS.Vector Contour -> Int -> Int -> [ VS.Vector Contour ] 
 makeBands contours unitsPerEm treshold = undefined
@@ -779,10 +808,10 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
   textureDescriptorSetResource <- Lib.withDescriptorSetResource device (descriptorSetLayouts textureShaderRes) (descriptorSetLayoutCreateInfos textureShaderRes) acquireT
   let quadw = 1000 :: Float
   let quadh = 1000 :: Float
-  let quadVertices = [ QuadVertex (V2 0 0) (V4 (0.8) 0 0 1)
-                     , QuadVertex (V2 quadw 0) (V4 (0.8) 0 0  1)
-                     , QuadVertex (V2 quadw quadh) (V4 (0.8) 0 0  1)
-                     , QuadVertex (V2 0 quadh) (V4 (0.8) 0 0  1)
+  let quadVertices = [ QuadVertex (V2 0 0) (V4 (0) 0 0 1)
+                     , QuadVertex (V2 quadw 0) (V4 (0) 0 0  1)
+                     , QuadVertex (V2 quadw quadh) (V4 (0) 0 0  1)
+                     , QuadVertex (V2 0 quadh) (V4 (0) 0 0  1)
                      ] :: VS.Vector QuadVertex
   quadVerticesBuffer <- Lib.withVertexBuffer allocator quadVertices acquireT
 
@@ -805,13 +834,29 @@ loadContours Application { width, height } allocator phys device queueFamilyIndi
   -- let contours = VS.map (\(Contour (V2 x1 y1) (V2 x2 y2) (V2 x3 y3)) -> Contour (V2 y1 ( x1)) (V2 y2 (x2)) (V2 y3 x3)) (flatContours rContours) :: VS.Vector Contour
   --let contours = (flatContours rContoursSerif) :: VS.Vector Contour
   --let contours = flatContours quadContours :: VS.Vector Contour
-  let contours = (flatContours liContours) :: VS.Vector Contour
-  samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat contours acquireT
+  let contours = (flatContours liContours) :: [ Contour ]
+  samplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 1 contoursTexelFormat (VS.fromList contours) acquireT
+
+  let contoursYMaxBoundings = makeYMaxBoundings contours
+  contoursYMaxBoundingsSamplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 2 contoursTexelFormat contoursYMaxBoundings acquireT
+
+  let contoursYMinBoundings = makeYMinBoundings contours
+  contoursYMinBoundingsSamplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 3 contoursTexelFormat contoursYMinBoundings acquireT
+
+  let contoursXMaxBoundings = makeXMaxBoundings contours
+  contoursXMaxBoundingsSamplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 4 contoursTexelFormat contoursXMaxBoundings acquireT
+
+  let contoursXMinBoundings = makeXMinBoundings contours
+  contoursXMinBoundingsSamplerBufferWriteDescriptorSet <- Lib.withSamplerBufferDescriptorSet allocator phys device queueRes commandPoolRes queueFamilyIndices textureDescriptorSetResource 0 5 contoursTexelFormat contoursXMinBoundings acquireT
 
   updateDescriptorSets device
     [ texBufferWriteDescriptorSet
   --  , imageWriteDescriptorSet
     , samplerBufferWriteDescriptorSet
+    , contoursYMaxBoundingsSamplerBufferWriteDescriptorSet
+    , contoursYMinBoundingsSamplerBufferWriteDescriptorSet
+    , contoursXMaxBoundingsSamplerBufferWriteDescriptorSet
+    , contoursXMinBoundingsSamplerBufferWriteDescriptorSet
     ] []
 
   pure Present
@@ -931,6 +976,10 @@ withContoursShaderStages device = do
   #extension GL_ARB_separate_shader_objects : enable
 
   layout(set = 0, binding = 1) uniform isamplerBuffer contours;
+  layout(set = 0, binding = 2) uniform isamplerBuffer contoursYMaxBoundings;
+  layout(set = 0, binding = 3) uniform isamplerBuffer contoursYMinBoundings;
+  layout(set = 0, binding = 4) uniform isamplerBuffer contoursXMaxBoundings;
+  layout(set = 0, binding = 5) uniform isamplerBuffer contoursXMinBoundings;
 
   layout(location = 0) in vec4 fragColor;
 
@@ -954,9 +1003,12 @@ withContoursShaderStages device = do
   t1 = (b - d) / a
   
   */
+  const float unitsPerEm = 1000.0f;
+  const float pixelsPerEm = 15.0f;
+
   void main() {
     //vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(0, 1080.0);
-    vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(0, 1000.0);
+    vec2 pos = gl_FragCoord.xy * vec2(1.0, -1.0) + vec2(0, 800.0);
 
     /*if ( pos.x < 50
       && pos.x > 0
@@ -973,21 +1025,27 @@ withContoursShaderStages device = do
       return;
     }
     int texSize = textureSize(contours);
+    int yMaxSize = textureSize(contoursYMaxBoundings);
+    int yMinSize = textureSize(contoursYMinBoundings);
+    int xMaxSize = textureSize(contoursXMaxBoundings);
+    int xMinSize = textureSize(contoursXMinBoundings);
+
     float windingNumber = 0.0f;
     for (int i = 0; i < texSize; i += 3) {
-      vec2 p0 = texelFetch(contours, i).xy / 2048.0f * 1000.0f;
-      vec2 p1 = texelFetch(contours, i + 1).xy / 2048.0f * 1000.0f;
-      vec2 p2 = texelFetch(contours, i + 2).xy / 2048.0f * 1000.0f;
+      vec2 p0 = texelFetch(contours, i).xy / unitsPerEm * pixelsPerEm;
+      vec2 p1 = texelFetch(contours, i + 1).xy / unitsPerEm * pixelsPerEm;
+      vec2 p2 = texelFetch(contours, i + 2).xy / unitsPerEm * pixelsPerEm;
       windingNumber += countWindingNumberBezier2(p0 - pos, p1 - pos, p2 - pos);
       //outColor = vec4(p1/255.0, 0, 1);
       //break;
     }
     float wn = clamp(windingNumber, 0.0f, 1.0f);
+    //float wn = tanh(windingNumber * 2.0f);
     //outColor = 1.0f - vec4(wn * (1.0f - fragColor.xyz), 1.0f - (wn > 0.0f ? 1.0f : 0.0f) * fragColor.w);
     if (wn > 0.0f) {
       outColor = vec4(clamp(wn, fragColor.x, 1.0f) * fragColor.x, clamp(wn, fragColor.y, 1.0f) * fragColor.y, clamp(wn, fragColor.z, 1.0f) * fragColor.z, wn * fragColor.w);
     } else {
-      outColor = vec4(1.0f, 1.0f, 1.0f, 0.0f);
+      outColor = vec4(yMaxSize + yMinSize + xMaxSize + xMinSize, 1.0f, 1.0f, 0.0f);
     }
     //outColor = vec4(1.0f - wn * (1.0f - fragColor.xyz), (wn > 0.0f ? 1.0f : 0.0f) * fragColor.w);
   }
@@ -1018,8 +1076,8 @@ withContoursShaderStages device = do
     vec2 b = p0 - p1;
     vec2 c = p0;
     float d = sqrt(max(pow(b.y, 2) - a.y * c.y, 0.0));
-    if (abs(a.y) < 1e-5 * 2048) {
-      if (abs(b.y) < 1e-5 * 2048) {
+    if (abs(a.y) < 1e-5 * unitsPerEm) {
+      if (abs(b.y) < 1e-5 * unitsPerEm) {
         return vec2(-1, -1);
       }
       float t0 = 0.5f * c.y / b.y;
@@ -1044,6 +1102,8 @@ withContoursShaderStages device = do
     vec2 r0r1 = calcRoot(p0, p1, p2);
     float acc0 = t0 * - clamp(r0r1.x + 0.5, 0.0, 1.0);
     float acc1 = t1 * clamp(r0r1.y + 0.5, 0.0, 1.0);
+    //float acc0 = t0 * (r0r1.x >= 0 ? - 1.0f : 0.0f);
+    //float acc1 = t1 * (r0r1.y >= 0 ? 1.0f : 0.0f);
     return acc0 + acc1;
   }
   |]
